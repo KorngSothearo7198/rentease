@@ -66,5 +66,29 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
+	<!-- Image Picker Permission -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Rentease needs access to your photos to upload property images.</string>
+
+    <!-- Camera Permission (optional if you use camera later) -->
+    <key>NSCameraUsageDescription</key>
+    <string>Rentease needs camera access to take property photos.</string>
+
+
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+
+        <string>comgooglemaps</string>
+        <string>comgooglemapsurl</string>
+
+    </array>
+
+    <!-- Microphone Permission -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Rentease needs microphone access to send voice messages.</string>
+
+
+
 </dict>
 </plist>

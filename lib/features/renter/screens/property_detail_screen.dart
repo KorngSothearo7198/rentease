@@ -1,571 +1,781 @@
-// import 'package:flutter/material.dart';
-// import 'package:rentease/features/renter/screens/chat_list_screen.dart';
-// import 'package:rentease/features/renter/screens/request_booking_screen.dart';
-//
-// import 'chat_detail_screen.dart';
-//
-// class PropertyDetailScreen extends StatelessWidget {
-//   final String title;
-//   final String price;
-//   final String address;
-//   final String imageUrl;
-//   // final int beds;
-//   // final int baths;
-//   // final int sqft;
-//   final String description;
-//
-//   const PropertyDetailScreen({
-//     super.key,
-//     required this.title,
-//     required this.price,
-//     required this.address,
-//     required this.imageUrl,
-//     // required this.beds,
-//     // required this.baths,
-//     // required this.sqft,
-//     this.description = "Luxurious modern apartment with stunning city views, premium finishes, and world-class amenities.",
-//   });
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       body: CustomScrollView(
-//         slivers: [
-//           // Hero Image with Back Button
-//           SliverAppBar(
-//             expandedHeight: 380,
-//             pinned: true,
-//             flexibleSpace: FlexibleSpaceBar(
-//               background: Stack(
-//                 fit: StackFit.expand,
-//                 children: [
-//                   Image.network(
-//                     imageUrl,
-//                     fit: BoxFit.cover,
-//                   ),
-//                   Container(
-//                     decoration: const BoxDecoration(
-//                       gradient: LinearGradient(
-//                         begin: Alignment.topCenter,
-//                         end: Alignment.bottomCenter,
-//                         colors: [Colors.transparent, Colors.black45],
-//                       ),
-//                     ),
-//                   ),
-//                 ],
-//               ),
-//             ),
-//             leading: IconButton(
-//               icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-//               onPressed: () => Navigator.pop(context),
-//             ),
-//             actions: [
-//               IconButton(
-//                 icon: const Icon(Icons.favorite_border, color: Colors.white),
-//                 onPressed: () {},
-//               ),
-//             ],
-//           ),
-//
-//           SliverToBoxAdapter(
-//             child: Padding(
-//               padding: const EdgeInsets.all(20),
-//               child: Column(
-//                 crossAxisAlignment: CrossAxisAlignment.start,
-//                 children: [
-//                   // Title & Price
-//                   Row(
-//                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-//                     crossAxisAlignment: CrossAxisAlignment.start,
-//                     children: [
-//                       Expanded(
-//                         child: Text(
-//                           title,
-//                           style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-//                         ),
-//                       ),
-//                       Text(
-//                         '\$$price/mo',
-//                         style: const TextStyle(
-//                           fontSize: 26,
-//                           fontWeight: FontWeight.bold,
-//                           color: Color(0xFF6B46C1),
-//                         ),
-//                       ),
-//                     ],
-//                   ),
-//
-//                   const SizedBox(height: 8),
-//                   Text(address, style: const TextStyle(fontSize: 16, color: Colors.grey)),
-//
-//                   const SizedBox(height: 20),
-//
-//                   // Specs
-//                   Row(
-//                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-//                     // children: [
-//                     //   _buildSpecItem(Icons.king_bed, '$beds Bed'),
-//                     //   _buildSpecItem(Icons.bathtub, '$baths Bath'),
-//                     //   _buildSpecItem(Icons.square_foot, '$sqft sqft'),
-//                     // ],
-//                     children: [
-//                       _buildSpecItem(Icons.king_bed, ' Bed'),
-//                       _buildSpecItem(Icons.bathtub, ' Bath'),
-//                       _buildSpecItem(Icons.square_foot, ' sqft'),
-//                     ],
-//                   ),
-//
-//                   const Divider(height: 40),
-//
-//                   // Description
-//                   const Text(
-//                     'Description',
-//                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-//                   ),
-//                   const SizedBox(height: 12),
-//                   Text(
-//                     description,
-//                     style: const TextStyle(fontSize: 16, height: 1.6),
-//                   ),
-//
-//                   const SizedBox(height: 30),
-//
-//                   // Features
-//                   const Text(
-//                     'Features',
-//                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-//                   ),
-//                   const SizedBox(height: 12),
-//                   Wrap(
-//                     spacing: 10,
-//                     runSpacing: 10,
-//                     children: const [
-//                       FeatureChip('Balcony'),
-//                       FeatureChip('City View'),
-//                       FeatureChip('Parking'),
-//                       FeatureChip('Gym'),
-//                       FeatureChip('Pool'),
-//                       FeatureChip('24/7 Security'),
-//                     ],
-//                   ),
-//
-//                   const SizedBox(height: 40),
-//
-//                   // Action Buttons
-//                   Row(
-//                     children: [
-//                       Expanded(
-//                         child: OutlinedButton(
-//                           onPressed: () {
-//                             Navigator.push(
-//                               context,
-//                               MaterialPageRoute(builder: (_) =>  ChatListScreen()),
-//                             );
-//                           },
-//                           style: OutlinedButton.styleFrom(
-//                             padding: const EdgeInsets.symmetric(vertical: 16),
-//                           ),
-//                           child: const Text('Contact Owner'),
-//                         ),
-//                       ),
-//                       const SizedBox(width: 16),
-//                       Expanded(
-//                         child: ElevatedButton(
-//                           onPressed: () {
-//                             Navigator.push(
-//                               context,
-//                               MaterialPageRoute(builder: (_) => const RequestBookingScreen()),
-//                             );
-//                           },
-//                           style: ElevatedButton.styleFrom(
-//                             backgroundColor: const Color(0xFF6B46C1),
-//                             padding: const EdgeInsets.symmetric(vertical: 16),
-//                           ),
-//                           child: const Text('Book Now' , style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold ),),
-//                         ),
-//                       ),
-//                     ],
-//                   ),
-//
-//                   const SizedBox(height: 30),
-//                 ],
-//               ),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-//
-//   Widget _buildSpecItem(IconData icon, String text) {
-//     return Column(
-//       children: [
-//         Icon(icon, color: const Color(0xFF6B46C1), size: 28),
-//         const SizedBox(height: 6),
-//         Text(text, style: const TextStyle(fontWeight: FontWeight.w500)),
-//       ],
-//     );
-//   }
-// }
-//
-// class FeatureChip extends StatelessWidget {
-//   final String label;
-//   const FeatureChip(this.label, {super.key});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Chip(
-//       label: Text(label),
-//       backgroundColor: const Color(0xFFF8F5FF),
-//       side: const BorderSide(color: Color(0xFF6B46C1)),
-//     );
-//   }
-// }
-
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'chat_detail_screen.dart';
-import 'chat_list_screen.dart';
-import 'request_booking_screen.dart';
-// import 'chat_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-class PropertyDetailScreen extends StatelessWidget {
-  final String title;
-  final String price;
-  final String address;
-  final String imageUrl;
-  final int beds;
-  final int baths;
-  final int sqft;
-  final String description;
+import '../../../models/property_model.dart';
+import '../../../services/chat_service.dart';
+import '../../../services/favorite_service.dart';
+import 'chat_detail_screen.dart';
+import 'request_booking_screen.dart';
+
+class PropertyDetailScreen extends StatefulWidget {
+  final Property property;
 
   const PropertyDetailScreen({
     super.key,
-    this.title = "Skyline View Penthouse",
-    this.price = "3200",
-    this.address = "420 Madison Avenue, New York",
-    this.imageUrl = "https://source.unsplash.com/random/800x600/?modernkitchen",
-    this.beds = 2,
-    this.baths = 2,
-    this.sqft = 1450,
-    this.description =
-    "Experience unparalleled urban living in this stunning penthouse. Featuring floor-to-ceiling windows with panoramic city views, high-end finishes throughout, and a private terrace perfect for sunset relaxation. Designed for the modern professional seeking both comfort and style.",
+    required this.property,
   });
 
   @override
+  State<PropertyDetailScreen> createState() =>
+      _PropertyDetailScreenState();
+}
+
+class _PropertyDetailScreenState
+    extends State<PropertyDetailScreen> {
+  final FavoriteService favoriteService = FavoriteService();
+  final ChatService chatService = ChatService();
+
+  final PageController _pageController = PageController();
+  final ScrollController _scrollController = ScrollController();
+
+  bool isFavorite = false;
+
+  int _currentImageIndex = 0;
+
+  double _scrollOffset = 0.0;
+
+  static const double _expandedHeight = 360.0;
+
+  // ============================================================
+  // PRIMARY COLOR
+  // ============================================================
+
+  static const Color _primary = Color(0xFF4F46E5);
+
+  // ============================================================
+  // THEME COLORS
+  // ============================================================
+
+  bool get _isDark =>
+      Theme.of(context).brightness == Brightness.dark;
+
+  Color get _backgroundColor {
+    return _isDark
+        ? const Color(0xFF0B0D12)
+        : const Color(0xFFF8FAFC);
+  }
+
+  Color get _cardColor {
+    return _isDark
+        ? const Color(0xFF161922)
+        : Colors.white;
+  }
+
+  Color get _textPrimary {
+    return _isDark
+        ? const Color(0xFFF8FAFC)
+        : const Color(0xFF0F172A);
+  }
+
+  Color get _textSecondary {
+    return _isDark
+        ? const Color(0xFFA1A1AA)
+        : const Color(0xFF64748B);
+  }
+
+  Color get _borderColor {
+    return _isDark
+        ? Colors.white.withOpacity(0.08)
+        : const Color(0xFFE2E8F0);
+  }
+
+  Color get _iconBackground {
+    return _isDark
+        ? Colors.white.withOpacity(0.08)
+        : Colors.white.withOpacity(0.92);
+  }
+
+  Color get _placeholderColor {
+    return _isDark
+        ? const Color(0xFF20232D)
+        : const Color(0xFFE2E8F0);
+  }
+
+  Color get _secondaryBackground {
+    return _isDark
+        ? const Color(0xFF1D2029)
+        : const Color(0xFFF1F5F9);
+  }
+
+  // ============================================================
+  // AMENITY ICONS
+  // ============================================================
+
+  final Map<String, IconData> amenityIcons = const {
+    "WiFi": Icons.wifi,
+    "Parking": Icons.local_parking,
+    "AC": Icons.ac_unit,
+    "Pool": Icons.pool,
+    "Kitchen": Icons.kitchen,
+    "Laundry": Icons.local_laundry_service,
+    "Gym": Icons.fitness_center,
+    "Security": Icons.security,
+    "Balcony": Icons.balcony,
+  };
+
+  // ============================================================
+  // IMAGES
+  // ============================================================
+
+  List<String> get _images {
+    final list = <String>[];
+
+    if (widget.property.imageUrl.trim().isNotEmpty) {
+      list.add(widget.property.imageUrl);
+    }
+
+    // Add more images here later if your model supports them.
+    //
+    // list.addAll(widget.property.images ?? []);
+
+    if (list.isEmpty) {
+      list.add('');
+    }
+
+    return list;
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    checkFavorite();
+
+    _scrollController.addListener(() {
+      if (!mounted) return;
+
+      setState(() {
+        _scrollOffset = _scrollController.offset;
+      });
+    });
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _scrollController.dispose();
+
+    super.dispose();
+  }
+
+  // ============================================================
+  // COLLAPSE PROGRESS
+  // ============================================================
+
+  double get _collapseProgress {
+    return (
+        _scrollOffset /
+            (_expandedHeight - kToolbarHeight)
+    ).clamp(0.0, 1.0);
+  }
+
+  // ============================================================
+  // FAVORITE
+  // ============================================================
+
+  Future<void> checkFavorite() async {
+    final result =
+    await favoriteService.isFavorite(widget.property.id);
+
+    if (!mounted) return;
+
+    setState(() {
+      isFavorite = result;
+    });
+  }
+
+  Future<void> toggleFavorite() async {
+    if (isFavorite) {
+      await favoriteService.removeFavorite(
+        widget.property.id,
+      );
+    } else {
+      await favoriteService.addFavorite(
+        widget.property,
+      );
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      isFavorite = !isFavorite;
+    });
+  }
+
+  // ============================================================
+  // OPEN MAP
+  // ============================================================
+
+  Future<void> openMap(String location) async {
+    final Uri googleMapUrl = Uri.parse(
+      "https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(location)}",
+    );
+
+    try {
+      await launchUrl(
+        googleMapUrl,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      debugPrint("MAP ERROR: $e");
+    }
+  }
+
+  // ============================================================
+  // IMAGE VIEWER
+  // ============================================================
+
+  void _openImageViewer({
+    int initialIndex = 0,
+  }) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        pageBuilder: (_, __, ___) {
+          return _FullScreenImageViewer(
+            images: _images,
+            initialIndex: initialIndex,
+          );
+        },
+        transitionsBuilder: (
+            _,
+            animation,
+            __,
+            child,
+            ) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+      ),
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
+  @override
   Widget build(BuildContext context) {
+    final progress = _collapseProgress;
+
+    final titleOpacity =
+    ((progress - 0.55) / 0.45)
+        .clamp(0.0, 1.0);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F5FF),
+      backgroundColor: _backgroundColor,
+
       body: Stack(
         children: [
-          // Scrollable Content
+          // ======================================================
+          // MAIN SCROLL
+          // ======================================================
+
           CustomScrollView(
+            controller: _scrollController,
+            physics: const BouncingScrollPhysics(),
             slivers: [
-              // Hero Image
+              // ==================================================
+              // HERO IMAGE
+              // ==================================================
+
               SliverAppBar(
-                expandedHeight: 340,
+                expandedHeight: _expandedHeight,
+
                 pinned: true,
-                backgroundColor: Colors.white,
-                leading: IconButton(
-                  icon: const CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.arrow_back, color: Colors.black),
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                actions: [
-                  IconButton(
-                    icon: const CircleAvatar(
-                      backgroundColor: Colors.white,
-                      child: Icon(Icons.share, color: Colors.black),
+
+                stretch: true,
+
+                backgroundColor: _backgroundColor,
+
+                elevation: 0,
+
+                scrolledUnderElevation: 0,
+
+                // =================================================
+                // BACK BUTTON
+                // =================================================
+
+                leading: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: CircleAvatar(
+                    backgroundColor: _iconBackground,
+
+                    child: IconButton(
+                      icon: Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 18,
+                        color: _textPrimary,
+                      ),
+
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
                     ),
-                    onPressed: () {},
+                  ),
+                ),
+
+                // =================================================
+                // COLLAPSED TITLE
+                // =================================================
+
+                title: Opacity(
+                  opacity: titleOpacity,
+
+                  child: Text(
+                    widget.property.title,
+
+                    style: TextStyle(
+                      color: _textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+
+                    maxLines: 1,
+
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+
+                centerTitle: true,
+
+                // =================================================
+                // FAVORITE BUTTON
+                // =================================================
+
+                actions: [
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+
+                    child: CircleAvatar(
+                      backgroundColor:
+                      _iconBackground,
+
+                      child: IconButton(
+                        icon: Icon(
+                          isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+
+                          size: 20,
+
+                          color: isFavorite
+                              ? const Color(0xFFEF4444)
+                              : _textPrimary,
+                        ),
+
+                        onPressed: toggleFavorite,
+                      ),
+                    ),
                   ),
                 ],
+
+                // =================================================
+                // FLEXIBLE SPACE
+                // =================================================
+
                 flexibleSpace: FlexibleSpaceBar(
+                  stretchModes: const [
+                    StretchMode.zoomBackground,
+                    StretchMode.blurBackground,
+                  ],
+
                   background: Stack(
                     fit: StackFit.expand,
+
                     children: [
-                      Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
+                      // ===========================================
+                      // IMAGE PAGE VIEW
+                      // ===========================================
+
+                      PageView.builder(
+                        controller: _pageController,
+
+                        itemCount: _images.length,
+
+                        onPageChanged: (index) {
+                          setState(() {
+                            _currentImageIndex = index;
+                          });
+                        },
+
+                        itemBuilder: (
+                            context,
+                            index,
+                            ) {
+                          final url = _images[index];
+
+                          return GestureDetector(
+                            onTap: () {
+                              _openImageViewer(
+                                initialIndex: index,
+                              );
+                            },
+
+                            child: url.isEmpty
+                                ? Container(
+                              color:
+                              _placeholderColor,
+
+                              child: Icon(
+                                Icons.home_rounded,
+                                size: 64,
+                                color:
+                                _textSecondary,
+                              ),
+                            )
+                                : Image.network(
+                              url,
+
+                              fit: BoxFit.cover,
+
+                              errorBuilder:
+                                  (
+                                  _,
+                                  __,
+                                  ___,
+                                  ) {
+                                return Container(
+                                  color:
+                                  _placeholderColor,
+
+                                  child: Icon(
+                                    Icons.home_rounded,
+                                    size: 64,
+                                    color:
+                                    _textSecondary,
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        },
                       ),
-                      // Page indicators
+
+                      // ===========================================
+                      // BOTTOM IMAGE GRADIENT
+                      // ===========================================
+
                       Positioned(
-                        bottom: 20,
                         left: 0,
                         right: 0,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(3, (index) {
-                            return Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              width: index == 0 ? 20 : 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: index == 0 ? Colors.white : Colors.white54,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+                        bottom: 0,
+                        height: 100,
 
-              // Content
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Tag + Price
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Text(
-                              'LUXURY APARTMENT',
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient:
+                            LinearGradient(
+                              begin:
+                              Alignment.topCenter,
+                              end:
+                              Alignment.bottomCenter,
+
+                              colors: [
+                                Colors.transparent,
+
+                                Colors.black
+                                    .withOpacity(
+                                  0.45,
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            '\$$price /mo',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF6B46C1),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Title
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
                         ),
                       ),
 
-                      const SizedBox(height: 6),
+                      // ===========================================
+                      // PAGE DOTS
+                      // ===========================================
 
-                      // Location
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on, size: 18, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Text(
-                            address,
-                            style: TextStyle(color: Colors.grey[600], fontSize: 15),
-                          ),
-                        ],
-                      ),
+                      Positioned(
+                        bottom: 16,
+                        left: 0,
+                        right: 0,
 
-                      const SizedBox(height: 24),
-
-                      // Description
-                      const Text(
-                        'Description',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        description,
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.6,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // Facilities
-                      const Text(
-                        'Facilities',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: const [
-                          _FacilityItem(icon: Icons.wifi, label: 'WiFi'),
-                          _FacilityItem(icon: Icons.local_parking, label: 'Parking'),
-                          _FacilityItem(icon: Icons.ac_unit, label: 'AC'),
-                        ],
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // Owner Card
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Row(
+                        child: Column(
                           children: [
-                            const CircleAvatar(
-                              radius: 26,
-                              backgroundImage: NetworkImage(
-                                'https://static.wikia.nocookie.net/oggyandthecockroaches/images/d/d9/OGGY_PERSO.png/revision/latest?cb=20181112161051',
+                            if (_images.length > 1)
+                              Row(
+                                mainAxisAlignment:
+                                MainAxisAlignment
+                                    .center,
+
+                                children:
+                                List.generate(
+                                  _images.length,
+                                      (index) {
+                                    final active =
+                                        index ==
+                                            _currentImageIndex;
+
+                                    return AnimatedContainer(
+                                      duration:
+                                      const Duration(
+                                        milliseconds:
+                                        200,
+                                      ),
+
+                                      margin:
+                                      const EdgeInsets
+                                          .symmetric(
+                                        horizontal: 3,
+                                      ),
+
+                                      width:
+                                      active
+                                          ? 18
+                                          : 7,
+
+                                      height: 7,
+
+                                      decoration:
+                                      BoxDecoration(
+                                        color: active
+                                            ? Colors.white
+                                            : Colors.white54,
+
+                                        borderRadius:
+                                        BorderRadius
+                                            .circular(
+                                          4,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
+
+                            const SizedBox(
+                              height: 10,
                             ),
-                            const SizedBox(width: 14),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Sarah Jenkins',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
+
+                            // =====================================
+                            // VIEW PHOTOS
+                            // =====================================
+
+                            GestureDetector(
+                              onTap: () {
+                                _openImageViewer(
+                                  initialIndex:
+                                  _currentImageIndex,
+                                );
+                              },
+
+                              child: Container(
+                                padding:
+                                const EdgeInsets
+                                    .symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+
+                                decoration:
+                                BoxDecoration(
+                                  color: Colors.black
+                                      .withOpacity(
+                                    0.45,
+                                  ),
+
+                                  borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                    20,
+                                  ),
+                                ),
+
+                                child: const Row(
+                                  mainAxisSize:
+                                  MainAxisSize.min,
+
+                                  children: [
+                                    Icon(
+                                      Icons
+                                          .photo_library_outlined,
+                                      size: 14,
+                                      color:
+                                      Colors.white,
                                     ),
-                                  ),
-                                  Text(
-                                    'Property Owner',
-                                    style: TextStyle(color: Colors.grey, fontSize: 13),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Call Button
-                            CircleAvatar(
-                              backgroundColor: const Color(0xFF6B46C1).withOpacity(0.1),
-                              child: IconButton(
-                                icon: const Icon(Icons.phone, color: Color(0xFF6B46C1)),
-                                onPressed: () {},
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            // Message Button
-                            CircleAvatar(
-                              backgroundColor: const Color(0xFF6B46C1).withOpacity(0.1),
-                              child: IconButton(
-                                icon: const Icon(Icons.chat_bubble_outline, color: Color(0xFF6B46C1)),
-                                onPressed: () {
-                                  Navigator.push(
-                              context,
-                              // MaterialPageRoute(builder: (_) =>  ChatListScreen()),
-                                 MaterialPageRoute(builder: (_) =>  ChaerDetailScreen()),
-                            );
-                                },
+
+                                    SizedBox(
+                                      width: 6,
+                                    ),
+
+                                    Text(
+                                      "View photos",
+
+                                      style:
+                                      TextStyle(
+                                        color:
+                                        Colors.white,
+                                        fontSize: 12,
+                                        fontWeight:
+                                        FontWeight
+                                            .w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // Location
-                      const Text(
-                        'Location',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        height: 160,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          color: Colors.grey[300],
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.location_on,
-                            size: 50,
-                            color: Color(0xFF6B46C1),
-                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+
+              // ==================================================
+              // CONTENT
+              // ==================================================
+
+              theContent(),
             ],
           ),
 
-          // Bottom Bar
+          // ======================================================
+          // STICKY BOTTOM BAR
+          // ======================================================
+
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
+
             child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              padding:
+              const EdgeInsets.fromLTRB(
+                20,
+                12,
+                20,
+                28,
+              ),
+
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _cardColor,
+
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 15,
-                    offset: const Offset(0, -5),
+                    color: Colors.black.withOpacity(
+                      _isDark ? 0.35 : 0.06,
+                    ),
+
+                    blurRadius: 20,
+
+                    offset: const Offset(
+                      0,
+                      -4,
+                    ),
                   ),
                 ],
               ),
+
               child: Row(
                 children: [
-                  // Favorite
-                  Container(
-                    height: 54,
-                    width: 54,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.favorite_border),
-                      onPressed: () {},
-                    ),
+                  // =================================================
+                  // PRICE
+                  // =================================================
+
+                  Column(
+                    crossAxisAlignment:
+                    CrossAxisAlignment.start,
+
+                    mainAxisSize:
+                    MainAxisSize.min,
+
+                    children: [
+                      Text(
+                        "\$${widget.property.price.toInt()}",
+
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight:
+                          FontWeight.w800,
+                          color: _primary,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+
+                      Text(
+                        "per month",
+
+                        style: TextStyle(
+                          fontSize: 12,
+                          color:
+                          _textSecondary,
+                          fontWeight:
+                          FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  // Book Now
+
+                  const SizedBox(
+                    width: 20,
+                  ),
+
+                  // =================================================
+                  // BOOK BUTTON
+                  // =================================================
+
                   Expanded(
                     child: SizedBox(
-                      height: 54,
+                      height: 52,
+
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const RequestBookingScreen(),
+                              builder: (_) =>
+                                  RequestBookingScreen(
+                                    property:
+                                    widget.property,
+                                  ),
                             ),
                           );
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6B46C1),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+
+                        style:
+                        ElevatedButton.styleFrom(
+                          backgroundColor:
+                          _primary,
+
+                          foregroundColor:
+                          Colors.white,
+
+                          elevation: 0,
+
+                          shape:
+                          RoundedRectangleBorder(
+                            borderRadius:
+                            BorderRadius.circular(
+                              14,
+                            ),
                           ),
                         ),
+
                         child: const Text(
-                          'Book Now',
+                          "Book Now",
+
                           style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            fontWeight:
+                            FontWeight.w700,
                           ),
                         ),
                       ),
@@ -579,36 +789,925 @@ class PropertyDetailScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-// Facility Item Widget
-class _FacilityItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
+  // ============================================================
+  // CONTENT
+  // ============================================================
 
-  const _FacilityItem({required this.icon, required this.label});
+  Widget theContent() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          120,
+        ),
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
+        child: Column(
+          crossAxisAlignment:
+          CrossAxisAlignment.start,
+
+          children: [
+            // ==================================================
+            // CATEGORY
+            // ==================================================
+
+            if (widget.property.category
+                .trim()
+                .isNotEmpty)
+              Container(
+                padding:
+                const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+
+                decoration: BoxDecoration(
+                  color: _primary.withOpacity(
+                    0.1,
+                  ),
+
+                  borderRadius:
+                  BorderRadius.circular(
+                    20,
+                  ),
+                ),
+
+                child: const Text(
+                  "",
+                ).buildCategoryText(
+                  widget.property.category,
+                ),
+              ),
+
+            const SizedBox(
+              height: 12,
+            ),
+
+            // ==================================================
+            // TITLE
+            // ==================================================
+
+            Text(
+              widget.property.title,
+
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight:
+                FontWeight.w800,
+                color: _textPrimary,
+                letterSpacing: -0.4,
+              ),
+            ),
+
+            const SizedBox(
+              height: 8,
+            ),
+
+            // ==================================================
+            // LOCATION
+            // ==================================================
+
+            GestureDetector(
+              onTap: () {
+                openMap(
+                  widget.property.location,
+                );
+              },
+
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.location_on_outlined,
+                    size: 18,
+                    color: _textSecondary,
+                  ),
+
+                  const SizedBox(
+                    width: 4,
+                  ),
+
+                  Expanded(
+                    child: Text(
+                      widget.property.location,
+
+                      style: TextStyle(
+                        color:
+                        _textSecondary,
+                        fontSize: 14,
+                        fontWeight:
+                        FontWeight.w500,
+                      ),
+                    ),
+                  ),
+
+                  const Text(
+                    "Map",
+
+                    style: TextStyle(
+                      color: _primary,
+                      fontSize: 13,
+                      fontWeight:
+                      FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(
+              height: 20,
+            ),
+
+            // ==================================================
+            // SPECS
+            // ==================================================
+
+            Row(
+              children: [
+                _specChip(
+                  Icons.bed_outlined,
+                  "${widget.property.bedrooms} Beds",
+                ),
+
+                const SizedBox(
+                  width: 10,
+                ),
+
+                _specChip(
+                  Icons.bathtub_outlined,
+                  "${widget.property.bathrooms} Baths",
+                ),
+
+                const SizedBox(
+                  width: 10,
+                ),
+
+                _specChip(
+                  Icons.payments_outlined,
+                  "\$${widget.property.price.toInt()}/mo",
+                ),
+              ],
+            ),
+
+            const SizedBox(
+              height: 28,
+            ),
+
+            // ==================================================
+            // DESCRIPTION
+            // ==================================================
+
+            _sectionTitle(
+              "Description",
+            ),
+
+            const SizedBox(
+              height: 10,
+            ),
+
+            Text(
+              widget.property.description
+                  .trim()
+                  .isEmpty
+                  ? "No description provided."
+                  : widget.property.description,
+
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.6,
+                color: _textSecondary,
+              ),
+            ),
+
+            const SizedBox(
+              height: 28,
+            ),
+
+            // ==================================================
+            // FACILITIES
+            // ==================================================
+
+            if (widget.property.amenities
+                .isNotEmpty) ...[
+              _sectionTitle(
+                "Facilities",
+              ),
+
+              const SizedBox(
+                height: 14,
+              ),
+
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+
+                children: widget.property
+                    .amenities
+                    .map(
+                      (amenity) {
+                    return _facilityChip(
+                      icon: amenityIcons[
+                      amenity] ??
+                          Icons
+                              .check_circle_outline,
+                      label: amenity,
+                    );
+                  },
+                )
+                    .toList(),
+              ),
+
+              const SizedBox(
+                height: 28,
               ),
             ],
-          ),
-          child: Icon(icon, color: const Color(0xFF6B46C1), size: 28),
+
+            // ==================================================
+            // HOST
+            // ==================================================
+
+            _sectionTitle(
+              "Host",
+            ),
+
+            const SizedBox(
+              height: 12,
+            ),
+
+            Container(
+              padding:
+              const EdgeInsets.all(14),
+
+              decoration: BoxDecoration(
+                color: _cardColor,
+
+                borderRadius:
+                BorderRadius.circular(
+                  16,
+                ),
+
+                border: Border.all(
+                  color: _borderColor,
+                ),
+
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black
+                        .withOpacity(
+                      _isDark ? 0.15 : 0.03,
+                    ),
+
+                    blurRadius: 12,
+
+                    offset: const Offset(
+                      0,
+                      3,
+                    ),
+                  ),
+                ],
+              ),
+
+              child: Row(
+                children: [
+                  // ============================================
+                  // OWNER ICON
+                  // ============================================
+
+                  CircleAvatar(
+                    radius: 24,
+
+                    backgroundColor:
+                    _primary.withOpacity(
+                      0.1,
+                    ),
+
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: _primary,
+                      size: 26,
+                    ),
+                  ),
+
+                  const SizedBox(
+                    width: 12,
+                  ),
+
+                  // ============================================
+                  // OWNER INFO
+                  // ============================================
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
+
+                      children: [
+                        Text(
+                          "Property Owner",
+
+                          style: TextStyle(
+                            fontWeight:
+                            FontWeight.w700,
+                            fontSize: 15,
+                            color:
+                            _textPrimary,
+                          ),
+                        ),
+
+                        const SizedBox(
+                          height: 2,
+                        ),
+
+                        Text(
+                          "Host",
+
+                          style: TextStyle(
+                            color:
+                            _textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ============================================
+                  // CHAT
+                  // ============================================
+
+                  _iconAction(
+                    Icons
+                        .chat_bubble_outline_rounded,
+                    onTap: _openChat,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(
+              height: 28,
+            ),
+
+            // ==================================================
+            // LOCATION
+            // ==================================================
+
+            _sectionTitle(
+              "Location",
+            ),
+
+            const SizedBox(
+              height: 12,
+            ),
+
+            GestureDetector(
+              onTap: () {
+                openMap(
+                  widget.property.location,
+                );
+              },
+
+              child: Container(
+                height: 140,
+
+                width: double.infinity,
+
+                decoration: BoxDecoration(
+                  color: _cardColor,
+
+                  borderRadius:
+                  BorderRadius.circular(
+                    16,
+                  ),
+
+                  border: Border.all(
+                    color: _borderColor,
+                  ),
+                ),
+
+                child: Column(
+                  mainAxisAlignment:
+                  MainAxisAlignment.center,
+
+                  children: [
+                    // ==========================================
+                    // MAP ICON
+                    // ==========================================
+
+                    Container(
+                      width: 48,
+                      height: 48,
+
+                      decoration:
+                      BoxDecoration(
+                        color:
+                        _primary.withOpacity(
+                          0.1,
+                        ),
+
+                        shape:
+                        BoxShape.circle,
+                      ),
+
+                      child: const Icon(
+                        Icons.map_outlined,
+                        color: _primary,
+                        size: 24,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 10,
+                    ),
+
+                    // ==========================================
+                    // LOCATION TEXT
+                    // ==========================================
+
+                    Text(
+                      widget.property.location,
+
+                      textAlign:
+                      TextAlign.center,
+
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                        FontWeight.w600,
+                        color:
+                        _textPrimary,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 4,
+                    ),
+
+                    const Text(
+                      "Tap to open in Maps",
+
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _primary,
+                        fontWeight:
+                        FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-      ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // OPEN CHAT
+  // ============================================================
+
+  Future<void> _openChat() async {
+    final currentUser =
+        FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      return;
+    }
+
+    final conversationId =
+    chatService.createConversationId(
+      currentUser.uid,
+      widget.property.ownerId,
+    );
+
+    await chatService.createConversation(
+      conversationId: conversationId,
+      renterId: currentUser.uid,
+      ownerId: widget.property.ownerId,
+      houseId: widget.property.id,
+      propertyName: widget.property.title,
+    );
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatDetailScreen(
+          conversationId:
+          conversationId,
+          hostName: "Owner",
+          propertyName:
+          widget.property.title,
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SECTION TITLE
+  // ============================================================
+
+  Widget _sectionTitle(
+      String title,
+      ) {
+    return Text(
+      title,
+
+      style: TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w800,
+        color: _textPrimary,
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+
+  // ============================================================
+  // SPEC CHIP
+  // ============================================================
+
+  Widget _specChip(
+      IconData icon,
+      String label,
+      ) {
+    return Expanded(
+      child: Container(
+        padding:
+        const EdgeInsets.symmetric(
+          vertical: 12,
+        ),
+
+        decoration: BoxDecoration(
+          color: _cardColor,
+
+          borderRadius:
+          BorderRadius.circular(
+            14,
+          ),
+
+          border: Border.all(
+            color: _borderColor,
+          ),
+
+          boxShadow: [
+            BoxShadow(
+              color:
+              Colors.black.withOpacity(
+                _isDark ? 0.12 : 0.03,
+              ),
+
+              blurRadius: 10,
+
+              offset: const Offset(
+                0,
+                2,
+              ),
+            ),
+          ],
+        ),
+
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: _primary,
+              size: 20,
+            ),
+
+            const SizedBox(
+              height: 6,
+            ),
+
+            Text(
+              label,
+
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight:
+                FontWeight.w600,
+                color: _textPrimary,
+              ),
+
+              textAlign:
+              TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // FACILITY CHIP
+  // ============================================================
+
+  Widget _facilityChip({
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      padding:
+      const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 10,
+      ),
+
+      decoration: BoxDecoration(
+        color: _cardColor,
+
+        borderRadius:
+        BorderRadius.circular(
+          14,
+        ),
+
+        border: Border.all(
+          color: _borderColor,
+        ),
+      ),
+
+      child: Row(
+        mainAxisSize:
+        MainAxisSize.min,
+
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: _primary,
+          ),
+
+          const SizedBox(
+            width: 8,
+          ),
+
+          Text(
+            label,
+
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight:
+              FontWeight.w600,
+              color: _textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // ICON ACTION
+  // ============================================================
+
+  Widget _iconAction(
+      IconData icon, {
+        required VoidCallback onTap,
+      }) {
+    return Material(
+      color: _primary.withOpacity(
+        0.1,
+      ),
+
+      borderRadius:
+      BorderRadius.circular(
+        12,
+      ),
+
+      child: InkWell(
+        onTap: onTap,
+
+        borderRadius:
+        BorderRadius.circular(
+          12,
+        ),
+
+        child: Padding(
+          padding:
+          const EdgeInsets.all(
+            10,
+          ),
+
+          child: Icon(
+            icon,
+            color: _primary,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ================================================================
+// CATEGORY TEXT HELPER
+// ================================================================
+//
+// This is used only to keep the category Text non-const because
+// the text comes from the Property model.
+// ================================================================
+
+extension _CategoryTextExtension on Text {
+  Widget buildCategoryText(
+      String category,
+      ) {
+    return Text(
+      category.toUpperCase(),
+
+      style: const TextStyle(
+        color: _PropertyDetailScreenState._primary,
+        fontWeight: FontWeight.w700,
+        fontSize: 11,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+}
+
+// ============================================================
+// FULL SCREEN IMAGE VIEWER
+// ============================================================
+
+class _FullScreenImageViewer
+    extends StatefulWidget {
+  final List<String> images;
+
+  final int initialIndex;
+
+  const _FullScreenImageViewer({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_FullScreenImageViewer>
+  createState() =>
+      _FullScreenImageViewerState();
+}
+
+class _FullScreenImageViewerState
+    extends State<_FullScreenImageViewer> {
+  late PageController _controller;
+
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _index = widget.initialIndex;
+
+    _controller = PageController(
+      initialPage:
+      widget.initialIndex,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(
+      BuildContext context,
+      ) {
+    return Scaffold(
+      // Image viewer intentionally stays black.
+      backgroundColor: Colors.black,
+
+      body: Stack(
+        children: [
+          // ======================================================
+          // IMAGES
+          // ======================================================
+
+          PageView.builder(
+            controller: _controller,
+
+            itemCount:
+            widget.images.length,
+
+            onPageChanged: (index) {
+              setState(() {
+                _index = index;
+              });
+            },
+
+            itemBuilder: (
+                context,
+                index,
+                ) {
+              final url =
+              widget.images[index];
+
+              return InteractiveViewer(
+                minScale: 1,
+
+                maxScale: 4,
+
+                child: Center(
+                  child: url.isEmpty
+                      ? const Icon(
+                    Icons.home_rounded,
+                    size: 80,
+                    color:
+                    Colors.white54,
+                  )
+                      : Image.network(
+                    url,
+
+                    fit: BoxFit.contain,
+
+                    errorBuilder:
+                        (
+                        _,
+                        __,
+                        ___,
+                        ) {
+                      return const Icon(
+                        Icons
+                            .broken_image_outlined,
+                        size: 64,
+                        color:
+                        Colors.white54,
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // ======================================================
+          // TOP BAR
+          // ======================================================
+
+          SafeArea(
+            child: Padding(
+              padding:
+              const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+
+              child: Row(
+                children: [
+                  // ==============================================
+                  // CLOSE
+                  // ==============================================
+
+                  IconButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        context,
+                      );
+                    },
+
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color:
+                      Colors.white,
+                      size: 28,
+                    ),
+                  ),
+
+                  const Spacer(),
+
+                  // ==============================================
+                  // IMAGE COUNTER
+                  // ==============================================
+
+                  if (widget.images
+                      .length >
+                      1)
+                    Text(
+                      "${_index + 1} / ${widget.images.length}",
+
+                      style:
+                      const TextStyle(
+                        color:
+                        Colors.white,
+                        fontSize: 15,
+                        fontWeight:
+                        FontWeight.w600,
+                      ),
+                    ),
+
+                  const SizedBox(
+                    width: 12,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

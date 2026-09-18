@@ -38,6 +38,38 @@ dependencies:
   firebase_auth: ^6.5.6
   cloud_firestore: ^6.7.1
   firebase_storage: ^13.4.5
+  qr_flutter: ^4.1.0
+
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.4
+
+
+  firebase_messaging: ^16.0.0
+  flutter_sound: ^9.6.0
+  permission_handler: ^11.3.1
+  record: ^6.1.2
+
+#  url_launcher: ^6.3.0
+  url_launcher: ^6.3.2
+
+  shared_preferences: ^2.5.3
+  reorderable_grid_view: ^2.2.7
+
+  khqr_sdk: ^3.0.0
+
+#  crypto: ^latest
+  crypto: ^3.0.6
+  flutter_dotenv: ^5.2.1
+
+  image_picker: ^1.1.2
+  http: ^1.2.2
+
+  intl: ^0.19.0
+  fl_chart: ^0.68.0
+
+#  flutter_staggered_animations: ^1.1.1
+#  cached_network_image: ^3.3.1
+#  shimmer: ^3.0.0
 
 dev_dependencies:
   flutter_test:
@@ -62,9 +94,14 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
+#   assets:
+#     - images/qr_code.png
   #   - images/a_dot_ham.jpeg
+
+#  assets:
+#    - images/qr_code.png
+  assets:
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

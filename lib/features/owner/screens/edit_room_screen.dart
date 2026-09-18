@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 // Assuming Property model from previous screen
 import '../../../models/property_model.dart';
+import '../../../services/cloudinary_service.dart';
+import '../../../services/property_service.dart';
 
 class EditRoomScreen extends StatefulWidget {
   final Property property;
@@ -14,6 +19,77 @@ class EditRoomScreen extends StatefulWidget {
 
 class _EditRoomScreenState extends State<EditRoomScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  File? selectedImage;
+
+  bool isUploadingImage = false;
+
+  final CloudinaryService cloudinaryService = CloudinaryService();
+
+  final PropertyService propertyService = PropertyService();
+
+  // edit or changes image
+  Future<void> changePhoto() async {
+    final picker = ImagePicker();
+
+    try {
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (image == null) {
+        return;
+      }
+
+      setState(() {
+        selectedImage = File(image.path);
+      });
+
+      await uploadNewImage();
+    } catch (e) {
+      print("Pick image error: $e");
+    }
+  }
+
+  // upload image
+  Future<void> uploadNewImage() async {
+    if (selectedImage == null) {
+      return;
+    }
+
+    setState(() {
+      isUploadingImage = true;
+    });
+
+    try {
+      final imageUrl = await cloudinaryService.uploadImage(selectedImage!);
+
+      if (imageUrl == null) {
+        throw Exception("Upload failed");
+      }
+
+      await propertyService.updateProperty(widget.property.id, {
+        "imageUrl": imageUrl,
+      });
+
+      setState(() {
+        widget.property.imageUrl;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Photo updated successfully")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      setState(() {
+        isUploadingImage = false;
+      });
+    }
+  }
 
   // Controllers
   late TextEditingController _titleController;
@@ -45,22 +121,22 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
     // ---------------------------------------------------------------
     _titleController = TextEditingController(text: widget.property.title);
     _categoryController = TextEditingController(text: widget.property.category);
-    _priceController = TextEditingController(text: widget.property.price.toInt().toString());
+    _priceController = TextEditingController(
+      text: widget.property.price.toInt().toString(),
+    );
     _locationController = TextEditingController(text: widget.property.location);
-    _descriptionController = TextEditingController(text: widget.property.description);
+    _descriptionController = TextEditingController(
+      text: widget.property.description,
+    );
 
     _bedrooms = widget.property.bedrooms;
     _bathrooms = widget.property.bathrooms;
-    _status = widget.property.status == PropertyStatus.published ? 'Published' : 'Draft';
+    _status = widget.property.status == PropertyStatus.published
+        ? 'Published'
+        : 'Draft';
 
     // Map existing icon list back to amenity names
-    _selectedAmenities = [];
-    if (widget.property.amenities.contains(Icons.wifi)) _selectedAmenities.add('Wi-Fi');
-    if (widget.property.amenities.contains(Icons.local_parking)) _selectedAmenities.add('Parking');
-    if (widget.property.amenities.contains(Icons.ac_unit)) _selectedAmenities.add('AC');
-    if (widget.property.amenities.contains(Icons.pool)) _selectedAmenities.add('Pool');
-    if (widget.property.amenities.contains(Icons.kitchen)) _selectedAmenities.add('Kitchen');
-    if (widget.property.amenities.contains(Icons.dry_cleaning)) _selectedAmenities.add('Laundry');
+    _selectedAmenities = List<String>.from(widget.property.amenities);
   }
 
   @override
@@ -107,12 +183,19 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      widget.property.imageUrl,
-                      height: 180,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
+                    child: selectedImage != null
+                        ? Image.file(
+                            selectedImage!,
+                            height: 180,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          )
+                        : Image.network(
+                            widget.property.imageUrl,
+                            height: 180,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
                   ),
                   Positioned.fill(
                     child: Container(
@@ -122,13 +205,22 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
                       ),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
-                        onTap: () {
-                          // Trigger image change/upload dialog
-                        },
+
+                        onTap: changePhoto, // select Changes Image
+
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.camera_alt_outlined, color: Colors.white, size: 36),
+                          children: [
+                            if (isUploadingImage)
+                              const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            else
+                              const Icon(
+                                Icons.camera_alt_outlined,
+                                color: Colors.white,
+                                size: 36,
+                              ),
                             SizedBox(height: 6),
                             Text(
                               'Change Photo',
@@ -233,7 +325,8 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
                           value: _bathrooms,
                           onIncrement: () => setState(() => _bathrooms += 0.5),
                           onDecrement: () {
-                            if (_bathrooms > 1.0) setState(() => _bathrooms -= 0.5);
+                            if (_bathrooms > 1.0)
+                              setState(() => _bathrooms -= 0.5);
                           },
                           isDouble: true,
                         ),
@@ -244,13 +337,19 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
                     // Status Dropdown
                     const Text(
                       'Listing Status',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: _status,
                       decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: Colors.grey[300]!),
@@ -273,19 +372,26 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
                     // Amenities Selection
                     const Text(
                       'Select Amenities',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 8.0,
                       runSpacing: 8.0,
                       children: _amenityOptions.entries.map((entry) {
-                        final isSelected = _selectedAmenities.contains(entry.key);
+                        final isSelected = _selectedAmenities.contains(
+                          entry.key,
+                        );
                         return FilterChip(
                           avatar: Icon(
                             entry.value,
                             size: 16,
-                            color: isSelected ? Colors.white : const Color(0xFF6200EE),
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF6200EE),
                           ),
                           label: Text(entry.key),
                           selected: isSelected,
@@ -325,14 +431,32 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
                     ),
                     elevation: 2,
                   ),
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      // Perform save/update operation
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Listing updated successfully!')),
-                      );
-                      Navigator.pop(context);
+                  onPressed: () async {
+                    if (!_formKey.currentState!.validate()) {
+                      return;
                     }
+
+                    await propertyService.updateProperty(widget.property.id, {
+                      "title": _titleController.text.trim(),
+                      "category": _categoryController.text.trim(),
+                      "price": double.parse(_priceController.text),
+                      "location": _locationController.text.trim(),
+                      "description": _descriptionController.text.trim(),
+                      "bedrooms": _bedrooms,
+                      "bathrooms": _bathrooms,
+                      "status": _status == "Published" ? "published" : "draft",
+                      "amenities": _selectedAmenities,
+                    });
+
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Room updated successfully"),
+                      ),
+                    );
+
+                    Navigator.pop(context);
                   },
                   child: const Text(
                     'Update Room Listing',
@@ -374,12 +498,17 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
           maxLines: maxLines,
           keyboardType: keyboardType,
           validator: (value) =>
-          value == null || value.isEmpty ? 'Field required' : null,
+              value == null || value.isEmpty ? 'Field required' : null,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
-            prefixIcon: icon != null ? Icon(icon, color: const Color(0xFF6200EE), size: 20) : null,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            prefixIcon: icon != null
+                ? Icon(icon, color: const Color(0xFF6200EE), size: 20)
+                : null,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -431,8 +560,13 @@ class _EditRoomScreenState extends State<EditRoomScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12.0),
                 child: Text(
-                  isDouble ? value.toString().replaceAll('.0', '') : value.toString(),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  isDouble
+                      ? value.toString().replaceAll('.0', '')
+                      : value.toString(),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ),
               IconButton(

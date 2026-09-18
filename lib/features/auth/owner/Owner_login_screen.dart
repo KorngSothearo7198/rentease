@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:rentease/features/auth/owner/register_screen.dart';
 import 'package:rentease/features/owner/screens/owner_home_screen.dart'; // adjust path
+import '../../../models/user_model.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/session_service.dart';
 // import '../services/auth_service.dart';
 
 class OwnerLoginScreen extends StatefulWidget {
@@ -31,17 +33,29 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
     setState(() => isLoading = true);
 
     try {
-      String? role = await authService.login(
+      UserModel? user = await authService.login(
         email: emailController.text.trim(),
         password: passwordController.text,
       );
 
       if (!mounted) return;
 
-      if (role == "owner") {
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("User not found")),
+        );
+        return;
+      }
+
+      // Save user locally
+      await SessionService.saveUser(user.toJson());
+
+      if (user.role == "owner") {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const OwnerHomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => const OwnerHomeScreen(),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -53,7 +67,9 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
         SnackBar(content: Text(e.toString())),
       );
     } finally {
-      if (mounted) setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 

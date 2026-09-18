@@ -1,4 +1,18 @@
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../../models/category_model.dart';
+import '../../../models/property_model.dart';
+import '../../../services/category_service.dart';
+import '../../../services/cloudinary_service.dart';
+import '../../../services/property_service.dart';
+import '../../../services/subscription_service.dart';
+import 'OwnerSubscriptionScreen.dart';
 
 class AddRoomScreen extends StatefulWidget {
   const AddRoomScreen({Key? key}) : super(key: key);
@@ -10,32 +24,160 @@ class AddRoomScreen extends StatefulWidget {
 class _AddRoomScreenState extends State<AddRoomScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  // Services
+  final PropertyService propertyService = PropertyService();
+  final CloudinaryService cloudinaryService = CloudinaryService();
+  final CategoryService categoryService = CategoryService();
+  final SubscriptionService subscriptionService = SubscriptionService();
+
+  // State Variables
+  File? selectedImage;
+  bool isUploading = false;
+  String? selectedCategory;
+
   // Controllers
-  final _titleController = TextEditingController();
-  final _categoryController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _locationController = TextEditingController();
-  final _descriptionController = TextEditingController();
+  final titleController = TextEditingController();
+  final priceController = TextEditingController();
+  final locationController = TextEditingController();
+  final descriptionController = TextEditingController();
 
-  int _bedrooms = 1;
-  double _bathrooms = 1.0;
-  String _status = 'Published'; // 'Published' or 'Draft'
+  int bedrooms = 1;
+  double bathrooms = 1.0;
+  String status = "Published";
 
-  // Selected Amenities
-  final Map<String, IconData> _amenityOptions = {
-    'Wi-Fi': Icons.wifi,
-    'Parking': Icons.local_parking,
-    'AC': Icons.ac_unit,
-    'Pool': Icons.pool,
-    'Kitchen': Icons.kitchen,
-    'Laundry': Icons.dry_cleaning,
+  final Map<String, IconData> amenities = {
+    "WiFi": Icons.wifi,
+    "Parking": Icons.local_parking,
+    "AC": Icons.ac_unit,
+    "Pool": Icons.pool,
+    "Kitchen": Icons.kitchen,
   };
-  final List<String> _selectedAmenities = [];
+
+  final List<String> selectedAmenities = [];
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    priceController.dispose();
+    locationController.dispose();
+    descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> pickImage() async {
+    final ImagePicker picker = ImagePicker();
+
+    try {
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+      if (image == null) return;
+
+      setState(() {
+        selectedImage = File(image.path);
+      });
+    } catch (e) {
+      debugPrint("Image picker error: $e");
+    }
+  }
+
+  Future<void> saveRoom() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (selectedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a property image")),
+      );
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      setState(() => isUploading = true);
+
+      // 1. CHECK SUBSCRIPTION GATEWAY
+      final subCheck = await subscriptionService.canAddProperty(user.uid);
+
+      if (!subCheck['canAdd']) {
+        setState(() => isUploading = false);
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(subCheck['reason']),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'UPGRADE',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const OwnerSubscriptionScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        return;
+      }
+
+      // 2. Upload Image
+      final imageUrl = await cloudinaryService.uploadImage(selectedImage!);
+      if (imageUrl == null) {
+        throw Exception("Image upload failed");
+      }
+
+      // 3. Build Property Model
+      final property = Property(
+        id: "",
+        ownerId: user.uid,
+        title: titleController.text.trim(),
+        category: selectedCategory ?? "",
+        price: double.tryParse(priceController.text.trim()) ?? 0,
+        location: locationController.text.trim(),
+        description: descriptionController.text.trim(),
+        bedrooms: bedrooms,
+        bathrooms: bathrooms,
+        imageUrl: imageUrl,
+        amenities: selectedAmenities,
+        status: status == "Published"
+            ? PropertyStatus.published
+            : PropertyStatus.draft,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      );
+
+      await propertyService.createProperty(property);
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Room created successfully")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isUploading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F2FE), // Matching background
+      backgroundColor: const Color(0xFFF3F2FE),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -63,35 +205,34 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
               // IMAGE UPLOAD PLACEHOLDER
               // ---------------------------------------------------------------
               GestureDetector(
-                onTap: () {
-                  // Implement image picking logic
-                },
+                onTap: pickImage,
                 child: Container(
                   height: 180,
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF6200EE).withOpacity(0.3), width: 1.5),
                   ),
-                  child: Column(
+                  child: selectedImage == null
+                      ? const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.cloud_upload_outlined, size: 48, color: Color(0xFF6200EE)),
+                    children: [
+                      Icon(
+                        Icons.cloud_upload,
+                        size: 50,
+                        color: Colors.purple,
+                      ),
                       SizedBox(height: 8),
-                      Text(
-                        'Upload Property Photo',
-                        style: TextStyle(
-                          color: Color(0xFF6200EE),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'PNG or JPG up to 10MB',
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
-                      ),
+                      Text("Upload Property Photo"),
                     ],
+                  )
+                      : ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.file(
+                      selectedImage!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                    ),
                   ),
                 ),
               ),
@@ -116,29 +257,24 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title
                     _buildInputField(
-                      controller: _titleController,
+                      controller: titleController,
                       label: 'Property Title',
                       hint: 'e.g., Skyline View Penthouse',
                       icon: Icons.home_outlined,
                     ),
                     const SizedBox(height: 16),
 
-                    // Category & Price Row
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: _buildInputField(
-                            controller: _categoryController,
-                            label: 'Category',
-                            hint: 'e.g., LUXURY APARTMENT',
-                          ),
+                          child: _buildCategoryDropdown(),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: _buildInputField(
-                            controller: _priceController,
+                            controller: priceController,
                             label: 'Price (\$/mo)',
                             hint: '3200',
                             keyboardType: TextInputType.number,
@@ -148,42 +284,41 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Location
                     _buildInputField(
-                      controller: _locationController,
+                      controller: locationController,
                       label: 'Location',
                       hint: 'e.g., Upper East Side, Manhattan, NY',
                       icon: Icons.location_on_outlined,
                     ),
                     const SizedBox(height: 16),
 
-                    // Description
                     _buildInputField(
-                      controller: _descriptionController,
+                      controller: descriptionController,
                       label: 'Description',
                       hint: 'Write a brief description...',
                       maxLines: 3,
                     ),
                     const SizedBox(height: 20),
 
-                    // Bedrooms & Bathrooms Counters
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         _buildCounter(
                           label: 'Bedrooms',
-                          value: _bedrooms,
-                          onIncrement: () => setState(() => _bedrooms++),
+                          value: bedrooms,
+                          onIncrement: () => setState(() => bedrooms++),
                           onDecrement: () {
-                            if (_bedrooms > 1) setState(() => _bedrooms--);
+                            if (bedrooms > 1) setState(() => bedrooms--);
                           },
                         ),
                         _buildCounter(
                           label: 'Bathrooms',
-                          value: _bathrooms,
-                          onIncrement: () => setState(() => _bathrooms += 0.5),
+                          value: bathrooms,
+                          onIncrement: () => setState(() => bathrooms += 0.5),
                           onDecrement: () {
-                            if (_bathrooms > 1.0) setState(() => _bathrooms -= 0.5);
+                            if (bathrooms > 1.0) {
+                              setState(() => bathrooms -= 0.5);
+                            }
                           },
                           isDouble: true,
                         ),
@@ -191,16 +326,21 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Status Dropdown
                     const Text(
                       'Listing Status',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _status,
+                      value: status,
                       decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: Colors.grey[300]!),
@@ -210,32 +350,37 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
                           borderSide: BorderSide(color: Colors.grey[300]!),
                         ),
                       ),
-                      items: ['Published', 'Draft'].map((status) {
+                      items: ['Published', 'Draft'].map((s) {
                         return DropdownMenuItem(
-                          value: status,
-                          child: Text(status),
+                          value: s,
+                          child: Text(s),
                         );
                       }).toList(),
-                      onChanged: (val) => setState(() => _status = val!),
+                      onChanged: (val) => setState(() => status = val!),
                     ),
                     const SizedBox(height: 20),
 
-                    // Amenities Selection
                     const Text(
                       'Select Amenities',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 8.0,
                       runSpacing: 8.0,
-                      children: _amenityOptions.entries.map((entry) {
-                        final isSelected = _selectedAmenities.contains(entry.key);
+                      children: amenities.entries.map((entry) {
+                        final isSelected =
+                        selectedAmenities.contains(entry.key);
                         return FilterChip(
                           avatar: Icon(
                             entry.value,
                             size: 16,
-                            color: isSelected ? Colors.white : const Color(0xFF6200EE),
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF6200EE),
                           ),
                           label: Text(entry.key),
                           selected: isSelected,
@@ -247,9 +392,9 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
                           onSelected: (selected) {
                             setState(() {
                               if (selected) {
-                                _selectedAmenities.add(entry.key);
+                                selectedAmenities.add(entry.key);
                               } else {
-                                _selectedAmenities.remove(entry.key);
+                                selectedAmenities.remove(entry.key);
                               }
                             });
                           },
@@ -275,16 +420,10 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
                     ),
                     elevation: 2,
                   ),
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      // Save action logic here
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Room added successfully!')),
-                      );
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: const Text(
+                  onPressed: isUploading ? null : saveRoom,
+                  child: isUploading
+                      ? const CupertinoActivityIndicator(color: Colors.white)
+                      : const Text(
                     'Save Room Listing',
                     style: TextStyle(
                       fontSize: 16,
@@ -302,7 +441,88 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
     );
   }
 
-  // Input Field Helper
+  Widget _buildCategoryDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Category',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        const SizedBox(height: 6),
+        StreamBuilder<List<CategoryModel>>(
+          stream: categoryService.getCategories(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            }
+
+            final categories = snapshot.data ?? [];
+
+            if (selectedCategory != null &&
+                !categories.any((c) => c.name == selectedCategory)) {
+              selectedCategory = null;
+            }
+
+            return DropdownButtonFormField<String>(
+              value: selectedCategory,
+              isExpanded: true,
+              hint: Text(
+                'Select Category',
+                style: TextStyle(color: Colors.grey[400], fontSize: 13),
+              ),
+              validator: (value) =>
+              value == null || value.isEmpty ? 'Category required' : null,
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF6200EE)),
+                ),
+              ),
+              items: categories.map((cat) {
+                return DropdownMenuItem<String>(
+                  value: cat.name,
+                  child: Text(
+                    cat.name,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() => selectedCategory = value);
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   Widget _buildInputField({
     required TextEditingController controller,
     required String label,
@@ -328,8 +548,13 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
-            prefixIcon: icon != null ? Icon(icon, color: const Color(0xFF6200EE), size: 20) : null,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            prefixIcon: icon != null
+                ? Icon(icon, color: const Color(0xFF6200EE), size: 20)
+                : null,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -348,7 +573,6 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
     );
   }
 
-  // Counter Control Helper
   Widget _buildCounter({
     required String label,
     required dynamic value,
@@ -381,8 +605,13 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12.0),
                 child: Text(
-                  isDouble ? value.toString().replaceAll('.0', '') : value.toString(),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  isDouble
+                      ? value.toString().replaceAll('.0', '')
+                      : value.toString(),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ),
               IconButton(
