@@ -17,13 +17,21 @@ class _EarningsScreenState extends State<EarningsScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   static const Color _primary = Color(0xFF4F46E5);
+
   static const Color _bg = Color(0xFFF8FAFC);
+
   static const Color _card = Colors.white;
+
   static const Color _textPrimary = Color(0xFF0F172A);
+
   static const Color _textSecondary = Color(0xFF64748B);
+
   static const Color _border = Color(0xFFE2E8F0);
+
   static const Color _success = Color(0xFF059669);
+
   static const Color _warning = Color(0xFFD97706);
+
   static const Color _danger = Color(0xFFDC2626);
 
   bool _isLoading = true;
@@ -31,35 +39,59 @@ class _EarningsScreenState extends State<EarningsScreen> {
   List<Map<String, dynamic>> _payments = [];
 
   double _totalEarnings = 0;
+
   int _paidCount = 0;
 
-  final Map<String, String> _propertyNames = {};
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
+
     _loadEarnings();
   }
 
   // ============================================================
-  // LOAD PAYMENTS
+  // LOAD EARNINGS
   // ============================================================
 
   Future<void> _loadEarnings() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
     try {
       final currentUser = _auth.currentUser;
 
       if (currentUser == null) {
-        debugPrint('❌ No authenticated user');
+        debugPrint('No authenticated user');
+
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+
         return;
       }
 
       final ownerId = currentUser.uid;
 
       debugPrint('======================================');
-      debugPrint('💰 LOADING OWNER EARNINGS');
+
+      debugPrint('LOADING OWNER EARNINGS');
+
       debugPrint('Owner ID: $ownerId');
+
       debugPrint('======================================');
+
+      // ========================================================
+      // GET PAYMENTS
+      // ========================================================
 
       final snapshot = await _firestore
           .collection('payments')
@@ -67,64 +99,193 @@ class _EarningsScreenState extends State<EarningsScreen> {
           .get();
 
       double total = 0;
+
       int paid = 0;
 
       final List<Map<String, dynamic>> loadedPayments = [];
 
+      // ========================================================
+      // PROCESS EACH PAYMENT
+      // ========================================================
+
       for (final doc in snapshot.docs) {
-        final data = doc.data();
+        final payment = Map<String, dynamic>.from(doc.data());
 
-        final amount = _toDouble(data['amount']);
+        payment['id'] = doc.id;
 
-        final status = data['status']?.toString() ?? 'Unknown';
+        // ------------------------------------------------------
+        // PAYMENT BASIC DATA
+        // ------------------------------------------------------
+
+        final status = payment['status']?.toString().trim() ?? 'Unknown';
+
+        // ------------------------------------------------------
+        // GET BOOKING
+        // ------------------------------------------------------
+
+        final bookingId = payment['bookingId']?.toString().trim() ?? '';
+
+        Map<String, dynamic>? bookingData;
+
+        if (bookingId.isNotEmpty) {
+          bookingData = await _getBooking(bookingId);
+
+          if (bookingData != null) {
+            payment['bookingData'] = bookingData;
+
+            // If payment does not contain
+            // houseId, get it from booking.
+            if ((payment['houseId']?.toString().isEmpty ?? true) &&
+                bookingData['houseId'] != null) {
+              payment['houseId'] = bookingData['houseId'].toString();
+            }
+
+            // If payment does not contain
+            // renterId, get it from booking.
+            if ((payment['renterId']?.toString().isEmpty ?? true) &&
+                bookingData['renterId'] != null) {
+              payment['renterId'] = bookingData['renterId'].toString();
+            }
+
+            // If payment does not contain
+            // ownerId, get it from booking.
+            if ((payment['ownerId']?.toString().isEmpty ?? true) &&
+                bookingData['ownerId'] != null) {
+              payment['ownerId'] = bookingData['ownerId'].toString();
+            }
+          }
+        }
+
+        // ------------------------------------------------------
+        // GET PROPERTY
+        // ------------------------------------------------------
+
+        final houseId = payment['houseId']?.toString().trim() ?? '';
+
+        if (houseId.isNotEmpty) {
+          final property = await _getProperty(houseId);
+
+          if (property != null) {
+            payment['propertyData'] = property;
+          }
+        }
+
+        // ------------------------------------------------------
+        // GET RENTER
+        // ------------------------------------------------------
+
+        final renterId = payment['renterId']?.toString().trim() ?? '';
+
+        if (renterId.isNotEmpty) {
+          final renter = await _getUser(renterId);
+
+          if (renter != null) {
+            payment['renterData'] = renter;
+          }
+        }
+
+        // ------------------------------------------------------
+        // GET OWNER
+        // ------------------------------------------------------
+
+        final paymentOwnerId = payment['ownerId']?.toString().trim() ?? ownerId;
+
+        if (paymentOwnerId.isNotEmpty) {
+          final owner = await _getUser(paymentOwnerId);
+
+          if (owner != null) {
+            payment['ownerData'] = owner;
+          }
+        }
+
+        // ======================================================
+        // BOOKING AMOUNT
+        // ======================================================
+        //
+        // Priority:
+        //
+        // 1. payment.bookingAmount
+        // 2. booking.totalAmount
+        // 3. payment.amount
+        //
+        // This prevents showing Bakong transaction amount
+        // instead of the actual booking amount.
+        // ======================================================
+
+        final bookingAmount = _getBookingAmount(payment);
+
+        payment['displayAmount'] = bookingAmount;
+
+        // ======================================================
+        // TOTAL EARNINGS
+        // ======================================================
 
         if (status.toLowerCase() == 'paid') {
-          total += amount;
+          total += bookingAmount;
+
           paid++;
         }
 
-        loadedPayments.add({'id': doc.id, ...data});
-
-        // Load property name
-        final houseId = data['houseId']?.toString() ?? '';
-
-        if (houseId.isNotEmpty) {
-          await _loadPropertyName(houseId);
-        }
+        loadedPayments.add(payment);
       }
 
-      // Sort newest first
+      // ========================================================
+      // SORT NEWEST FIRST
+      // ========================================================
+
       loadedPayments.sort((a, b) {
         final aDate = a['createdAt'] as Timestamp?;
+
         final bDate = b['createdAt'] as Timestamp?;
 
-        if (aDate == null || bDate == null) {
+        if (aDate == null && bDate == null) {
           return 0;
+        }
+
+        if (aDate == null) {
+          return 1;
+        }
+
+        if (bDate == null) {
+          return -1;
         }
 
         return bDate.compareTo(aDate);
       });
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _payments = loadedPayments;
+
         _totalEarnings = total;
+
         _paidCount = paid;
+
         _isLoading = false;
       });
 
       debugPrint('======================================');
-      debugPrint('✅ PAYMENTS LOADED');
+
+      debugPrint('PAYMENTS LOADED');
+
       debugPrint('Payments : ${loadedPayments.length}');
+
       debugPrint('Paid     : $paid');
+
       debugPrint('Total    : \$${total.toStringAsFixed(2)}');
+
       debugPrint('======================================');
     } catch (e, stackTrace) {
-      debugPrint('❌ Load earnings error: $e');
+      debugPrint('Load earnings error: $e');
+
       debugPrint('$stackTrace');
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _isLoading = false;
@@ -133,32 +294,90 @@ class _EarningsScreenState extends State<EarningsScreen> {
   }
 
   // ============================================================
-  // LOAD PROPERTY NAME
+  // GET BOOKING
   // ============================================================
 
-  Future<void> _loadPropertyName(String houseId) async {
-    if (_propertyNames.containsKey(houseId)) {
-      return;
-    }
+  Future<Map<String, dynamic>?> _getBooking(String bookingId) async {
+    try {
+      final doc = await _firestore.collection('bookings').doc(bookingId).get();
 
+      if (!doc.exists || doc.data() == null) {
+        return null;
+      }
+
+      return Map<String, dynamic>.from(doc.data()!);
+    } catch (e) {
+      debugPrint('Get booking error: $e');
+
+      return null;
+    }
+  }
+
+  // ============================================================
+  // GET PROPERTY
+  // ============================================================
+
+  Future<Map<String, dynamic>?> _getProperty(String houseId) async {
     try {
       final doc = await _firestore.collection('properties').doc(houseId).get();
 
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-
-        _propertyNames[houseId] =
-            data['title']?.toString() ??
-            data['name']?.toString() ??
-            'Rental Property';
-      } else {
-        _propertyNames[houseId] = 'Unknown Property';
+      if (!doc.exists || doc.data() == null) {
+        return null;
       }
-    } catch (e) {
-      debugPrint('❌ Load property name error: $e');
 
-      _propertyNames[houseId] = 'Unknown Property';
+      return Map<String, dynamic>.from(doc.data()!);
+    } catch (e) {
+      debugPrint('Get property error: $e');
+
+      return null;
     }
+  }
+
+  // ============================================================
+  // GET USER
+  // ============================================================
+
+  Future<Map<String, dynamic>?> _getUser(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+
+      if (!doc.exists || doc.data() == null) {
+        return null;
+      }
+
+      return Map<String, dynamic>.from(doc.data()!);
+    } catch (e) {
+      debugPrint('Get user error: $e');
+
+      return null;
+    }
+  }
+
+  // ============================================================
+  // GET BOOKING AMOUNT
+  // ============================================================
+
+  double _getBookingAmount(Map<String, dynamic> payment) {
+    // 1. payment.bookingAmount
+    final paymentBookingAmount = payment['bookingAmount'];
+
+    if (paymentBookingAmount != null) {
+      return _toDouble(paymentBookingAmount);
+    }
+
+    // 2. bookings.totalAmount
+    final bookingData = payment['bookingData'] as Map<String, dynamic>?;
+
+    if (bookingData != null) {
+      final totalAmount = bookingData['totalAmount'];
+
+      if (totalAmount != null) {
+        return _toDouble(totalAmount);
+      }
+    }
+
+    // 3. payment.amount as fallback
+    return _toDouble(payment['amount']);
   }
 
   // ============================================================
@@ -179,7 +398,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
             size: 20,
             color: _textPrimary,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            Navigator.pop(context);
+          },
         ),
         title: const Text(
           'Earnings & Payments',
@@ -328,7 +549,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
             color: _success,
           ),
         ),
+
         const SizedBox(width: 12),
+
         Expanded(
           child: _summaryCard(
             icon: Icons.receipt_long_outlined,
@@ -371,7 +594,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
             ),
             child: Icon(icon, color: color, size: 21),
           ),
+
           const SizedBox(width: 12),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -402,27 +627,77 @@ class _EarningsScreenState extends State<EarningsScreen> {
   // ============================================================
 
   Widget _buildPaymentCard(Map<String, dynamic> payment) {
-    final amount = _toDouble(payment['amount']);
+    // ----------------------------------------------------------
+    // BOOKING ID
+    // ----------------------------------------------------------
+
+    final bookingId = payment['bookingId']?.toString() ?? '';
+
+    // ----------------------------------------------------------
+    // PROPERTY
+    // ----------------------------------------------------------
+
+    final propertyData = payment['propertyData'] as Map<String, dynamic>?;
+
+    final houseId = payment['houseId']?.toString() ?? '';
+
+    final propertyTitle =
+        propertyData?['title']?.toString().trim().isNotEmpty == true
+        ? propertyData!['title'].toString().trim()
+        : 'Rental Property';
+
+    // ----------------------------------------------------------
+    // RENTER
+    // ----------------------------------------------------------
+
+    final renterData = payment['renterData'] as Map<String, dynamic>?;
+
+    final renterName =
+        renterData?['fullName']?.toString().trim().isNotEmpty == true
+        ? renterData!['fullName'].toString().trim()
+        : 'Unknown Renter';
+
+    // ----------------------------------------------------------
+    // OWNER
+    // ----------------------------------------------------------
+
+    final ownerData = payment['ownerData'] as Map<String, dynamic>?;
+
+    final ownerName =
+        ownerData?['fullName']?.toString().trim().isNotEmpty == true
+        ? ownerData!['fullName'].toString().trim()
+        : 'Unknown Owner';
+
+    // ----------------------------------------------------------
+    // AMOUNT
+    // ----------------------------------------------------------
+
+    final amount = _getBookingAmount(payment);
+
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
 
     final status = payment['status']?.toString() ?? 'Unknown';
 
     final paymentMethod = payment['paymentMethod']?.toString() ?? 'Unknown';
 
-    final houseId = payment['houseId']?.toString() ?? '';
-
     final createdAt = payment['createdAt'] as Timestamp?;
 
     final statusColor = _paymentStatusColor(status);
 
-    // Get actual property name
-    final houseName = _propertyNames[houseId] ?? 'Loading property...';
+    // ----------------------------------------------------------
+    // PROFILE IMAGE
+    // ----------------------------------------------------------
+
+    final renterImage = renterData?['profileImage']?.toString();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _border, width: 1),
+        border: Border.all(color: _border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.035),
@@ -437,26 +712,11 @@ class _EarningsScreenState extends State<EarningsScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           onTap: () {
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              isDismissible: true,
-              enableDrag: true,
-              backgroundColor: Colors.transparent,
-              builder: (context) {
-                return DraggableScrollableSheet(
-                  initialChildSize: 0.65,
-                  minChildSize: 0.45,
-                  maxChildSize: 0.95,
-                  expand: false,
-                  builder: (context, scrollController) {
-                    return EarningsDetailScreen(
-                      payment: payment,
-                      // scrollController: scrollController,
-                    );
-                  },
-                );
-              },
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => EarningsDetailScreen(payment: payment),
+              ),
             );
           },
           child: Padding(
@@ -490,7 +750,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            houseName,
+                            propertyTitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -502,11 +762,13 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
                           const SizedBox(height: 4),
 
-                          const Text(
-                            'Rental payment',
-                            style: TextStyle(
+                          Text(
+                            renterName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
                               color: _textSecondary,
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -514,7 +776,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
                       ),
                     ),
 
-                    // STATUS
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 9,
@@ -543,6 +804,36 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 const SizedBox(height: 14),
 
                 // =================================================
+                // BOOKING ID
+                // =================================================
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.confirmation_number_outlined,
+                      size: 15,
+                      color: _textSecondary,
+                    ),
+
+                    const SizedBox(width: 6),
+
+                    Expanded(
+                      child: Text(
+                        'Booking ID: ${_shortId(bookingId)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                // =================================================
                 // AMOUNT + PAYMENT METHOD
                 // =================================================
                 Row(
@@ -553,7 +844,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Amount received',
+                          'Booking Amount',
                           style: TextStyle(
                             color: _textSecondary,
                             fontSize: 11,
@@ -614,16 +905,45 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 const SizedBox(height: 14),
 
                 // =================================================
-                // DATE
+                // DATE + OWNER
                 // =================================================
                 Row(
                   children: [
-                    _paymentInfo(
+                    const Icon(
                       Icons.access_time_rounded,
+                      size: 15,
+                      color: _textSecondary,
+                    ),
+
+                    const SizedBox(width: 5),
+
+                    Text(
                       _formatDateTime(createdAt),
+                      style: const TextStyle(
+                        color: _textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
 
                     const Spacer(),
+
+                    if (ownerName.isNotEmpty)
+                      Flexible(
+                        child: Text(
+                          ownerName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            color: _textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(width: 4),
 
                     const Icon(
                       Icons.chevron_right_rounded,
@@ -637,28 +957,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  // ============================================================
-  // PAYMENT INFO
-  // ============================================================
-
-  Widget _paymentInfo(IconData icon, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 15, color: _textSecondary),
-        const SizedBox(width: 5),
-        Text(
-          text,
-          style: const TextStyle(
-            color: _textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
     );
   }
 
@@ -743,11 +1041,11 @@ class _EarningsScreenState extends State<EarningsScreen> {
       return '—';
     }
 
-    if (id.length <= 8) {
+    if (id.length <= 12) {
       return id;
     }
 
-    return id.substring(0, 8);
+    return '${id.substring(0, 8)}...';
   }
 
   String _formatDateTime(Timestamp? timestamp) {
@@ -767,7 +1065,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
     final minute = date.minute.toString().padLeft(2, '0');
 
-    return '$day/$month/$year $hour:$minute';
+    return '$day/$month/$year '
+        '$hour:$minute';
   }
 
   Color _paymentStatusColor(String status) {
@@ -776,6 +1075,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         return _success;
 
       case 'pending':
+      case 'pENDING':
         return _warning;
 
       case 'failed':

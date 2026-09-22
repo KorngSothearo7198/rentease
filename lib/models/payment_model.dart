@@ -10,7 +10,19 @@ class PaymentModel {
   final String ownerId;
   final String houseId;
 
+  // ============================================================
+  // ACTUAL PAYMENT
+  // ============================================================
+
   final double amount;
+  final String currency;
+
+  // ============================================================
+  // BOOKING AMOUNT
+  // ============================================================
+
+  final double bookingAmount;
+  final String bookingCurrency;
 
   final String paymentMethod;
 
@@ -26,10 +38,17 @@ class PaymentModel {
     required this.ownerId,
     required this.houseId,
     required this.amount,
+    required this.currency,
+    required this.bookingAmount,
+    required this.bookingCurrency,
     required this.paymentMethod,
     required this.status,
     required this.createdAt,
   });
+
+  // ============================================================
+  // TO MAP
+  // ============================================================
 
   Map<String, dynamic> toMap() {
     return {
@@ -38,12 +57,24 @@ class PaymentModel {
       'renterId': renterId,
       'ownerId': ownerId,
       'houseId': houseId,
+
+      // Actual payment
       'amount': amount,
+      'currency': currency,
+
+      // Booking amount
+      'bookingAmount': bookingAmount,
+      'bookingCurrency': bookingCurrency,
+
       'paymentMethod': paymentMethod,
       'status': status,
       'createdAt': createdAt,
     };
   }
+
+  // ============================================================
+  // FROM MAP
+  // ============================================================
 
   factory PaymentModel.fromMap(
       String id,
@@ -52,21 +83,39 @@ class PaymentModel {
     return PaymentModel(
       id: id,
 
-      paymentId: map['paymentId'] ?? id,
+      paymentId: map['paymentId']?.toString() ?? id,
 
-      bookingId: map['bookingId'] ?? '',
+      bookingId: map['bookingId']?.toString() ?? '',
 
-      renterId: map['renterId'] ?? '',
+      renterId: map['renterId']?.toString() ?? '',
 
-      ownerId: map['ownerId'] ?? '',
+      ownerId: map['ownerId']?.toString() ?? '',
 
-      houseId: map['houseId'] ?? '',
+      houseId: map['houseId']?.toString() ?? '',
+
+      // ========================================================
+      // ACTUAL PAYMENT
+      // ========================================================
 
       amount: (map['amount'] as num?)?.toDouble() ?? 0.0,
 
-      paymentMethod: map['paymentMethod'] ?? '',
+      currency: map['currency']?.toString() ?? 'KHR',
 
-      status: map['status'] ?? '',
+      // ========================================================
+      // BOOKING AMOUNT
+      // ========================================================
+
+      bookingAmount:
+      (map['bookingAmount'] as num?)?.toDouble() ?? 0.0,
+
+      bookingCurrency:
+      map['bookingCurrency']?.toString() ?? 'USD',
+
+      paymentMethod:
+      map['paymentMethod']?.toString() ?? '',
+
+      status:
+      map['status']?.toString() ?? '',
 
       createdAt: map['createdAt'] is Timestamp
           ? map['createdAt'] as Timestamp

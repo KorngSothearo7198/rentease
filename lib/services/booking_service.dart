@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../models/booking_model.dart';
+import '../models/owner_notification_model.dart';
 
 class BookingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -134,6 +136,82 @@ class BookingService {
       print("✅ Booking cancelled");
     } catch (e) {
       print("❌ Cancel booking error: $e");
+      rethrow;
+    }
+  }
+
+
+  Future<void> createOwnerCancellationNotification({
+    required String ownerId,
+    required String bookingId,
+    required String houseId,
+    required String propertyName,
+    required String cancelReason,
+    required double bookingAmount,
+  }) async {
+    try {
+      final notificationRef =
+      FirebaseFirestore.instance.collection('ownerNotifications').doc();
+
+      final notification = OwnerNotificationModel(
+        notificationId: notificationRef.id,
+
+        // Notification belongs to OWNER
+        userId: ownerId,
+
+        role: 'owner',
+
+        title: 'Booking Cancelled',
+
+        body:
+        'A renter has cancelled the booking for "$propertyName". '
+            'Reason: $cancelReason',
+
+        type: 'booking_cancelled',
+
+        isRead: false,
+
+        relatedId: bookingId,
+
+        relatedType: 'booking',
+
+        bookingId: bookingId,
+
+        houseId: houseId,
+
+        // No payment was completed because this booking
+        // was eligible for cancellation.
+        paymentId: null,
+
+        // Booking amount, NOT Bakong transaction amount.
+        amount: bookingAmount,
+
+        currency: 'USD',
+
+        createdAt: DateTime.now(),
+      );
+
+      await notificationRef.set(
+        notification.toFirestore(),
+      );
+
+      debugPrint('======================================');
+      debugPrint('OWNER CANCELLATION NOTIFICATION');
+      debugPrint('======================================');
+      debugPrint('Notification ID : ${notificationRef.id}');
+      debugPrint('Owner ID        : $ownerId');
+      debugPrint('Booking ID      : $bookingId');
+      debugPrint('House ID        : $houseId');
+      debugPrint('Property        : $propertyName');
+      debugPrint('Type            : booking_cancelled');
+      debugPrint('Amount          : $bookingAmount USD');
+      debugPrint('Reason          : $cancelReason');
+      debugPrint('======================================');
+    } catch (e) {
+      debugPrint(
+        'Create owner cancellation notification error: $e',
+      );
+
       rethrow;
     }
   }
