@@ -298,12 +298,9 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
             final status = b.status.trim().toLowerCase();
             final paymentStatus = (b.paymentStatus ?? '').trim().toLowerCase();
 
-            final isCancelled =
-                status == 'cancelled' ||
-                    status == 'rejected';
+            final isCancelled = status == 'cancelled' || status == 'rejected';
 
-            final isPaid =
-                paymentStatus == 'paid';
+            final isPaid = paymentStatus == 'paid';
 
             if (isCancelled) {
               return false;
@@ -314,8 +311,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
               return false;
             }
 
-            return status == 'approved' ||
-                status == 'pending';
+            return status == 'approved' || status == 'pending';
           }).toList();
 
           // COMPLETED
@@ -330,19 +326,13 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
             final status = b.status.trim().toLowerCase();
             final paymentStatus = (b.paymentStatus ?? '').trim().toLowerCase();
 
-            final isCancelled =
-                status == 'cancelled' ||
-                    status == 'rejected';
+            final isCancelled = status == 'cancelled' || status == 'rejected';
 
-            final isPaid =
-                paymentStatus == 'paid';
+            final isPaid = paymentStatus == 'paid';
 
             return !isCancelled &&
                 isPaid &&
-                (
-                    status == 'approved' ||
-                        status == 'completed'
-                );
+                (status == 'approved' || status == 'completed');
           }).toList();
 
           // CANCELLED
@@ -350,8 +340,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
           final cancelled = bookings.where((b) {
             final status = b.status.trim().toLowerCase();
 
-            return status == 'cancelled' ||
-                status == 'rejected';
+            return status == 'cancelled' || status == 'rejected';
           }).toList();
 
           // ====================================================
@@ -421,8 +410,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen>
 
   String _displayStatus(BookingModel booking) {
     final status = booking.status.trim().toLowerCase();
-    final paymentStatus =
-    (booking.paymentStatus ?? '').trim().toLowerCase();
+    final paymentStatus = (booking.paymentStatus ?? '').trim().toLowerCase();
 
     if (status == 'cancelled' || status == 'rejected') {
       return 'Cancelled';

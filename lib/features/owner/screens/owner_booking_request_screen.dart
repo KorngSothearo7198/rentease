@@ -970,9 +970,6 @@ class _SwipeBookingCardState extends State<_SwipeBookingCard>
         height: 92,
         child: Stack(
           children: [
-            // ==================================================
-            // BACKGROUND ACTION
-            // ==================================================
             Positioned.fill(
               child: Row(
                 children: [

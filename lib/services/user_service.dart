@@ -147,4 +147,39 @@ class UserService {
   }
 
 
+  // ============================================================
+  // GET OWNER BY ID
+  // ============================================================
+
+  Future<UserModel?> getOwnerById(String ownerId) async {
+    try {
+      final doc = await _firestore
+          .collection('users')
+          .doc(ownerId)
+          .get();
+
+      if (!doc.exists || doc.data() == null) {
+        print('⚠️ Owner document not found: $ownerId');
+        return null;
+      }
+
+      final user = UserModel.fromMap(
+        doc.data()!,
+      );
+
+      // Make sure this user is actually an owner
+      if (user.role != 'owner') {
+        print(
+          '⚠️ User ${user.uid} is not an owner. '
+              'Role: ${user.role}',
+        );
+        return null;
+      }
+
+      return user;
+    } catch (e) {
+      print('❌ Get owner error: $e');
+      return null;
+    }
+  }
 }

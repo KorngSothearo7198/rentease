@@ -18,251 +18,111 @@ import '../../../services/cloudinary_service.dart';
 class ChatDetailScreen extends StatefulWidget {
   final String conversationId;
   final String hostName;
-  final String propertyName;
 
   const ChatDetailScreen({
     super.key,
     required this.conversationId,
     required this.hostName,
-    required this.propertyName,
   });
 
   @override
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-// ============================================================
-// EDIT MESSAGE DIALOG
-// ============================================================
-
-class _EditMessageDialog extends StatefulWidget {
-  final String initialText;
-  final bool isDark;
-  final Color textPrimary;
-  final Color textSecondary;
-  final Color surface;
-  final ValueChanged<String> onSave;
-
-  const _EditMessageDialog({
-    required this.initialText,
-    required this.isDark,
-    required this.textPrimary,
-    required this.textSecondary,
-    required this.surface,
-    required this.onSave,
-  });
-
-  @override
-  State<_EditMessageDialog> createState() => _EditMessageDialogState();
-}
-
-class _EditMessageDialogState extends State<_EditMessageDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _controller = TextEditingController(text: widget.initialText);
-
-    // Put cursor at the end.
-    _controller.selection = TextSelection.fromPosition(
-      TextPosition(offset: _controller.text.length),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final text = _controller.text.trim();
-
-    if (text.isEmpty) {
-      return;
-    }
-
-    widget.onSave(text);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: widget.surface,
-
-      title: Text(
-        "Edit Message",
-        style: TextStyle(
-          color: widget.textPrimary,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        maxLines: 5,
-        textCapitalization: TextCapitalization.sentences,
-        style: TextStyle(color: widget.textPrimary),
-        cursorColor: const Color(0xFF4F46E5),
-
-        decoration: InputDecoration(
-          hintText: "Enter message",
-
-          hintStyle: TextStyle(color: widget.textSecondary),
-
-          filled: true,
-
-          fillColor: widget.isDark
-              ? const Color(0xFF1A1A1A)
-              : const Color(0xFFF8FAFC),
-
-          contentPadding: const EdgeInsets.all(12),
-
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF4F46E5), width: 1.5),
-          ),
-        ),
-
-        onSubmitted: (_) {
-          _save();
-        },
-      ),
-
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-          child: const Text("Cancel"),
-        ),
-
-        ElevatedButton(
-          onPressed: _save,
-
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF4F46E5),
-            foregroundColor: Colors.white,
-            elevation: 0,
-          ),
-
-          child: const Text(
-            "Save",
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   // ============================================================
-  // SERVICES
+  // CONTROLLERS
   // ============================================================
 
   final TextEditingController messageController = TextEditingController();
+
+  final ScrollController _scrollController = ScrollController();
 
   final ChatService chatService = ChatService();
 
   final CloudinaryService cloudinaryService = CloudinaryService();
 
-  final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
 
-  final ImagePicker _picker = ImagePicker();
-
-  final AudioRecorder _recorder = AudioRecorder();
+  final AudioRecorder _audioRecorder = AudioRecorder();
 
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   // ============================================================
-  // STATE
+  // USER
   // ============================================================
 
   User? currentUser;
+
+  // ============================================================
+  // CONVERSATION
+  // ============================================================
+
+  String _activeConversationId = "";
+
+  String _ownerId = "";
+
+  String _renterId = "";
+
+  Map<String, dynamic>? _conversationData;
+
+  bool _loadingConversation = true;
+
+  // ============================================================
+  // PROPERTY
+  // ============================================================
+
+  Map<String, dynamic>? _propertyData;
+
+  bool _loadingProperty = true;
+
+  // ============================================================
+  // ALL OWNER PROPERTY CHATS
+  // ============================================================
+
+  List<_PropertyConversation> _propertyConversations = [];
+
+  bool _loadingPropertyChats = false;
+
+  // ============================================================
+  // MESSAGE / UPLOAD STATE
+  // ============================================================
 
   bool isUploading = false;
 
   bool isRecording = false;
 
-  String? currentlyPlayingId;
-
   String? _recordingPath;
 
-  StreamSubscription<void>? _audioCompleteSubscription;
+  DateTime? _recordingStartedAt;
 
-  // Monitors microphone input while recording.
-  Timer? _amplitudeTimer;
-
-  // Used to detect new messages and scroll only when needed.
   int _lastMessageCount = 0;
 
   // ============================================================
-  // LOGGER
+  // EDIT MESSAGE STATE
   // ============================================================
 
-  void _log(String message) {
-    debugPrint('[CHAT][${DateTime.now().toIso8601String()}] $message');
-  }
+  String? _editingMessageId;
+
+  String _editingOriginalText = "";
 
   // ============================================================
-  // COLORS
+  // AUDIO STATE
   // ============================================================
 
-  static const Color _primary = Color(0xFF4F46E5);
+  String? currentlyPlayingId;
 
-  static const Color _lightBackground = Color(0xFFF8FAFC);
+  double _playbackSpeed = 1.0;
 
-  static const Color _lightSurface = Colors.white;
+  final Map<String, Duration?> _audioDurations = {};
 
-  static const Color _lightTextPrimary = Color(0xFF0F172A);
+  final Map<String, Duration> _audioPositions = {};
 
-  static const Color _lightTextSecondary = Color(0xFF64748B);
+  final Set<String> _loadingAudioDurations = {};
 
-  static const Color _darkBackground = Colors.black;
+  StreamSubscription<void>? _audioCompleteSubscription;
 
-  static const Color _darkSurface = Color(0xFF111111);
-
-  static const Color _darkTextPrimary = Color(0xFFF8FAFC);
-
-  static const Color _darkTextSecondary = Color(0xFF94A3B8);
-
-  // ============================================================
-  // THEME
-  // ============================================================
-
-  bool _isDarkMode(BuildContext context) {
-    return Theme.of(context).brightness == Brightness.dark;
-  }
-
-  Color _backgroundColor(BuildContext context) {
-    return _isDarkMode(context) ? _darkBackground : _lightBackground;
-  }
-
-  Color _surfaceColor(BuildContext context) {
-    return _isDarkMode(context) ? _darkSurface : _lightSurface;
-  }
-
-  Color _textPrimaryColor(BuildContext context) {
-    return _isDarkMode(context) ? _darkTextPrimary : _lightTextPrimary;
-  }
-
-  Color _textSecondaryColor(BuildContext context) {
-    return _isDarkMode(context) ? _darkTextSecondary : _lightTextSecondary;
-  }
+  StreamSubscription<Duration>? _audioPositionSubscription;
 
   // ============================================================
   // INIT
@@ -272,36 +132,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void initState() {
     super.initState();
 
-    _log('01 - initState START');
-
     currentUser = FirebaseAuth.instance.currentUser;
 
-    debugPrint('[CHAT DEBUG] 02 - currentUser.uid = ${currentUser?.uid}');
+    _activeConversationId = widget.conversationId;
 
-    debugPrint('[CHAT DEBUG] 03 - currentUser.email = ${currentUser?.email}');
+    _loadConversationData();
 
-    debugPrint('[CHAT DEBUG] 04 - conversationId = ${widget.conversationId}');
-
-    debugPrint('[CHAT DEBUG] 05 - hostName = ${widget.hostName}');
-
-    debugPrint('[CHAT DEBUG] 06 - propertyName = ${widget.propertyName}');
-
-    _audioCompleteSubscription = _audioPlayer.onPlayerComplete.listen((_) {
-      debugPrint('[CHAT DEBUG] AUDIO - playback completed');
-
-      if (!mounted) {
-        debugPrint('[CHAT DEBUG] AUDIO - widget is NOT mounted');
-        return;
-      }
-
-      setState(() {
-        currentlyPlayingId = null;
-      });
-
-      debugPrint('[CHAT DEBUG] AUDIO - currentlyPlayingId cleared');
-    });
-
-    _log('07 - initState END');
+    _setupAudioListeners();
   }
 
   // ============================================================
@@ -311,184 +148,1194 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void dispose() {
     messageController.dispose();
+
     _scrollController.dispose();
 
     _audioCompleteSubscription?.cancel();
-    _amplitudeTimer?.cancel();
 
-    _recorder.dispose();
+    _audioPositionSubscription?.cancel();
+
     _audioPlayer.dispose();
+
+    _audioRecorder.dispose();
 
     super.dispose();
   }
 
   // ============================================================
-  // MESSAGE LOGGER
+  // BACK / DISMISS
   // ============================================================
 
-  void _logMessage(String prefix, MessageModel msg) {
-    debugPrint(
-      '[CHAT DEBUG] $prefix | '
-      'id=${msg.id} | '
-      'senderId=${msg.senderId} | '
-      'type=${msg.messageType} | '
-      'message="${msg.message}" | '
-      'isRead=${msg.isRead} | '
-      'isEdited=${msg.isEdited} | '
-      'createdAt=${msg.createdAt.toDate()}',
+  void _handleBack() {
+    // If keyboard is open, dismiss keyboard first.
+    if (FocusScope.of(context).hasFocus) {
+      FocusScope.of(context).unfocus();
+      return;
+    }
+
+    // If edit mode is active, cancel edit first.
+    if (_editingMessageId != null) {
+      _cancelEditing();
+      return;
+    }
+
+    Navigator.pop(context);
+  }
+
+  // ============================================================
+  // AUDIO LISTENERS
+  // ============================================================
+
+  void _setupAudioListeners() {
+    _audioCompleteSubscription = _audioPlayer.onPlayerComplete.listen((_) {
+      if (!mounted) return;
+
+      setState(() {
+        currentlyPlayingId = null;
+        _audioPositions.clear();
+      });
+    });
+
+    _audioPositionSubscription = _audioPlayer.onPositionChanged.listen((
+      position,
+    ) {
+      if (!mounted || currentlyPlayingId == null) {
+        return;
+      }
+
+      setState(() {
+        _audioPositions[currentlyPlayingId!] = position;
+      });
+    });
+  }
+
+  // ============================================================
+  // LOAD CURRENT CONVERSATION
+  // ============================================================
+
+  Future<void> _loadConversationData() async {
+    try {
+      if (!mounted) return;
+
+      setState(() {
+        _loadingConversation = true;
+        _loadingProperty = true;
+      });
+
+      final conversationSnapshot = await FirebaseFirestore.instance
+          .collection("conversations")
+          .doc(_activeConversationId)
+          .get();
+
+      if (!conversationSnapshot.exists) {
+        if (!mounted) return;
+
+        setState(() {
+          _conversationData = null;
+          _propertyData = null;
+          _loadingConversation = false;
+          _loadingProperty = false;
+        });
+
+        return;
+      }
+
+      final conversationData =
+          conversationSnapshot.data() ?? <String, dynamic>{};
+
+      final ownerId = conversationData["ownerId"]?.toString().trim() ?? "";
+
+      final renterId = conversationData["renterId"]?.toString().trim() ?? "";
+
+      if (!mounted) return;
+
+      setState(() {
+        _conversationData = conversationData;
+
+        _ownerId = ownerId;
+        _renterId = renterId;
+
+        _loadingConversation = false;
+      });
+
+      await _loadProperty(conversationData["houseId"]?.toString() ?? "");
+
+      await _loadOwnerPropertyChats();
+
+      await _markCurrentConversationUnreadAsRead();
+
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint("Error loading conversation: $e");
+
+      if (!mounted) return;
+
+      setState(() {
+        _conversationData = null;
+        _propertyData = null;
+        _loadingConversation = false;
+        _loadingProperty = false;
+      });
+    }
+  }
+
+  // ============================================================
+  // LOAD PROPERTY
+  // ============================================================
+
+  Future<void> _loadProperty(String houseId) async {
+    try {
+      if (!mounted) return;
+
+      setState(() {
+        _loadingProperty = true;
+      });
+
+      if (houseId.trim().isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          _propertyData = null;
+          _loadingProperty = false;
+        });
+
+        return;
+      }
+
+      final propertySnapshot = await FirebaseFirestore.instance
+          .collection("properties")
+          .doc(houseId)
+          .get();
+
+      if (!mounted) return;
+
+      setState(() {
+        _propertyData = propertySnapshot.exists
+            ? propertySnapshot.data()
+            : null;
+
+        _loadingProperty = false;
+      });
+    } catch (e) {
+      debugPrint("Load property error: $e");
+
+      if (!mounted) return;
+
+      setState(() {
+        _propertyData = null;
+        _loadingProperty = false;
+      });
+    }
+  }
+
+  // ============================================================
+  // LOAD ALL PROPERTY CHATS
+  // ============================================================
+
+  Future<void> _loadOwnerPropertyChats() async {
+    if (_ownerId.isEmpty || _renterId.isEmpty) {
+      return;
+    }
+
+    try {
+      if (!mounted) return;
+
+      setState(() {
+        _loadingPropertyChats = true;
+      });
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection("conversations")
+          .where("ownerId", isEqualTo: _ownerId)
+          .where("renterId", isEqualTo: _renterId)
+          .get();
+
+      final List<_PropertyConversation> result = [];
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+
+        final houseId = data["houseId"]?.toString().trim() ?? "";
+
+        if (houseId.isEmpty) {
+          continue;
+        }
+
+        String propertyName = data["propertyName"]?.toString().trim() ?? "";
+
+        String propertyImage = "";
+
+        try {
+          final propertySnapshot = await FirebaseFirestore.instance
+              .collection("properties")
+              .doc(houseId)
+              .get();
+
+          if (propertySnapshot.exists) {
+            final propertyData = propertySnapshot.data();
+
+            if (propertyData != null) {
+              propertyName = _propertyNameFromData(propertyData);
+
+              propertyImage = _propertyImageFromData(propertyData);
+            }
+          }
+        } catch (e) {
+          debugPrint("Property preview error: $e");
+        }
+
+        if (propertyName.isEmpty) {
+          propertyName = "Property";
+        }
+
+        result.add(
+          _PropertyConversation(
+            conversationId: doc.id,
+            houseId: houseId,
+            propertyName: propertyName,
+            propertyImage: propertyImage,
+            lastMessage: data["lastMessage"]?.toString() ?? "",
+            updatedAt: _timestampFromValue(data["updatedAt"]),
+          ),
+        );
+      }
+
+      result.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+      if (!mounted) return;
+
+      setState(() {
+        _propertyConversations = result;
+        _loadingPropertyChats = false;
+      });
+    } catch (e) {
+      debugPrint("Load property conversations error: $e");
+
+      if (!mounted) return;
+
+      setState(() {
+        _propertyConversations = [];
+        _loadingPropertyChats = false;
+      });
+    }
+  }
+
+  // ============================================================
+  // PROPERTY NAME
+  // ============================================================
+
+  String _propertyNameFromData(Map<String, dynamic> data) {
+    final fields = ["propertyName", "name", "title"];
+
+    for (final field in fields) {
+      final value = data[field]?.toString().trim();
+
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    return "Property";
+  }
+
+  // ============================================================
+  // PROPERTY IMAGE
+  // ============================================================
+
+  String _propertyImageFromData(Map<String, dynamic> data) {
+    final singleFields = [
+      "imageUrl",
+      "propertyImage",
+      "image",
+      "coverImage",
+      "thumbnail",
+    ];
+
+    for (final field in singleFields) {
+      final value = data[field]?.toString().trim();
+
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    final multipleFields = ["images", "imageUrls", "photos", "propertyImages"];
+
+    for (final field in multipleFields) {
+      final value = data[field];
+
+      if (value is List) {
+        for (final item in value) {
+          final image = item?.toString().trim();
+
+          if (image != null && image.isNotEmpty) {
+            return image;
+          }
+        }
+      }
+    }
+
+    return "";
+  }
+
+  // ============================================================
+  // TIMESTAMP
+  // ============================================================
+
+  Timestamp _timestampFromValue(dynamic value) {
+    if (value is Timestamp) {
+      return value;
+    }
+
+    return Timestamp.fromDate(DateTime.fromMillisecondsSinceEpoch(0));
+  }
+
+  // ============================================================
+  // SWITCH PROPERTY
+  // ============================================================
+
+  Future<void> _selectPropertyConversation(
+    _PropertyConversation propertyChat,
+  ) async {
+    if (propertyChat.conversationId == _activeConversationId) {
+      Navigator.pop(context);
+      return;
+    }
+
+    await _audioPlayer.stop();
+
+    _cancelEditing();
+
+    if (!mounted) return;
+
+    setState(() {
+      _activeConversationId = propertyChat.conversationId;
+
+      currentlyPlayingId = null;
+
+      _audioPositions.clear();
+
+      _audioDurations.clear();
+
+      _lastMessageCount = 0;
+
+      _loadingConversation = true;
+
+      _loadingProperty = true;
+    });
+
+    Navigator.pop(context);
+
+    try {
+      final conversationSnapshot = await FirebaseFirestore.instance
+          .collection("conversations")
+          .doc(propertyChat.conversationId)
+          .get();
+
+      if (!conversationSnapshot.exists) {
+        return;
+      }
+
+      final conversationData =
+          conversationSnapshot.data() ?? <String, dynamic>{};
+
+      final houseId = conversationData["houseId"]?.toString() ?? "";
+
+      if (!mounted) return;
+
+      setState(() {
+        _conversationData = conversationData;
+
+        _ownerId = conversationData["ownerId"]?.toString() ?? "";
+
+        _renterId = conversationData["renterId"]?.toString() ?? "";
+
+        _loadingConversation = false;
+      });
+
+      await _loadProperty(houseId);
+
+      await _markCurrentConversationUnreadAsRead();
+
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint("Switch property error: $e");
+
+      if (!mounted) return;
+
+      setState(() {
+        _loadingConversation = false;
+        _loadingProperty = false;
+      });
+    }
+  }
+
+  // ============================================================
+  // PROPERTY SELECTOR
+  // ============================================================
+
+  void _showPropertySelector() {
+    if (_propertyConversations.isEmpty) {
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 620),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE8F7),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: const Icon(
+                          Icons.home_work_outlined,
+                          color: Color(0xFF6B46C1),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Choose Property",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              "Select a separate chat for each property",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                const Divider(height: 1),
+
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    itemCount: _propertyConversations.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = _propertyConversations[index];
+
+                      final isSelected =
+                          item.conversationId == _activeConversationId;
+
+                      return _buildPropertySelectorItem(item, isSelected);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   // ============================================================
-  // MICROPHONE AMPLITUDE MONITOR
+  // PROPERTY SELECTOR ITEM
   // ============================================================
 
-  void _startAmplitudeMonitor() {
-    // Prevent multiple timers.
-    _amplitudeTimer?.cancel();
+  Widget _buildPropertySelectorItem(
+    _PropertyConversation item,
+    bool isSelected,
+  ) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () {
+        _selectPropertyConversation(item);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFF1ECFA) : const Color(0xFFF9F9FB),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF6B46C1) : Colors.transparent,
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 62,
+                height: 62,
+                child: item.propertyImage.isNotEmpty
+                    ? Image.network(
+                        item.propertyImage,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) {
+                          return _smallPropertyPlaceholder();
+                        },
+                      )
+                    : _smallPropertyPlaceholder(),
+              ),
+            ),
 
-    _log('VOICE AMP 01 - Starting amplitude monitor');
+            const SizedBox(width: 12),
 
-    _amplitudeTimer = Timer.periodic(const Duration(milliseconds: 500), (
-      _,
-    ) async {
-      if (!isRecording) {
-        return;
-      }
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.propertyName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected
+                          ? const Color(0xFF6B46C1)
+                          : Colors.black87,
+                    ),
+                  ),
 
-      try {
-        final amplitude = await _recorder.getAmplitude();
+                  const SizedBox(height: 5),
 
-        _log(
-          'VOICE AMPLITUDE - '
-          'current=${amplitude.current} '
-          'max=${amplitude.max}',
-        );
-      } catch (e) {
-        _log('VOICE AMPLITUDE ERROR - $e');
-      }
-    });
+                  Text(
+                    item.lastMessage.isEmpty
+                        ? "No messages yet"
+                        : item.lastMessage,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  Text(
+                    DateFormat("MMM d, h:mm a").format(item.updatedAt.toDate()),
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            if (isSelected)
+              Container(
+                width: 30,
+                height: 30,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF6B46C1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check, color: Colors.white, size: 18),
+              )
+            else
+              const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
   }
 
-  void _stopAmplitudeMonitor() {
-    if (_amplitudeTimer != null) {
-      _log('VOICE AMP 02 - Stopping amplitude monitor');
-    }
+  // ============================================================
+  // PLACEHOLDER
+  // ============================================================
 
-    _amplitudeTimer?.cancel();
-
-    _amplitudeTimer = null;
+  Widget _smallPropertyPlaceholder() {
+    return Container(
+      color: const Color(0xFFEDE8F7),
+      child: const Center(
+        child: Icon(Icons.home_outlined, color: Color(0xFF6B46C1), size: 27),
+      ),
+    );
   }
 
   // ============================================================
-  // SEND TEXT MESSAGE
+  // PROPERTY IMAGE
   // ============================================================
 
-  Future<void> sendMessage() async {
-    if (currentUser == null) {
-      _showSnack("Please login first");
-      return;
+  String? _getPropertyImage() {
+    final data = _propertyData;
+
+    if (data == null) {
+      return null;
     }
 
-    if (isUploading || isRecording) {
-      return;
+    final image = _propertyImageFromData(data);
+
+    return image.trim().isNotEmpty ? image : null;
+  }
+
+  // ============================================================
+  // PROPERTY NAME
+  // ============================================================
+
+  String _getPropertyName() {
+    final data = _propertyData;
+
+    if (data == null) {
+      final value = _conversationData?["propertyName"]?.toString().trim();
+
+      return value != null && value.isNotEmpty ? value : "Property";
     }
 
+    return _propertyNameFromData(data);
+  }
+
+  // ============================================================
+  // PROPERTY TYPE
+  // ============================================================
+
+  String _getPropertyType() {
+    final data = _propertyData;
+
+    if (data == null) {
+      return "Rental Property";
+    }
+
+    final type =
+        data["type"]?.toString() ??
+        data["category"]?.toString() ??
+        data["propertyType"]?.toString() ??
+        "";
+
+    return type.trim().isEmpty ? "Rental Property" : type;
+  }
+
+  // ============================================================
+  // PROPERTY STATUS
+  // ============================================================
+
+  String _getPropertyStatus() {
+    final data = _propertyData;
+
+    if (data == null) {
+      return "";
+    }
+
+    return data["status"]?.toString() ?? "";
+  }
+
+  // ============================================================
+  // PROPERTY VERIFIED
+  // ============================================================
+
+  bool _isPropertyVerified() {
+    final data = _propertyData;
+
+    if (data == null) {
+      return false;
+    }
+
+    return data["isVerified"] == true || data["leaseVerified"] == true;
+  }
+
+  // ============================================================
+  // OWNER IMAGE
+  // ============================================================
+
+  String? _getOwnerImage() {
+    final data = _conversationData;
+
+    if (data == null) {
+      return null;
+    }
+
+    final image =
+        data["ownerImage"]?.toString() ?? data["hostImage"]?.toString() ?? "";
+
+    return image.trim().isEmpty ? null : image;
+  }
+
+  // ============================================================
+  // OWNER NAME
+  // ============================================================
+
+  String _getOwnerName() {
+    final data = _conversationData;
+
+    if (data == null) {
+      return widget.hostName;
+    }
+
+    final name =
+        data["ownerName"]?.toString() ?? data["hostName"]?.toString() ?? "";
+
+    return name.trim().isEmpty ? widget.hostName : name;
+  }
+
+  // ============================================================
+  // OWNER ONLINE
+  // ============================================================
+
+  bool _isOwnerOnline() {
+    final data = _conversationData;
+
+    if (data == null) {
+      return false;
+    }
+
+    return data["isOnline"] == true;
+  }
+
+  // ============================================================
+  // SEND TEXT / SAVE EDIT
+  // ============================================================
+
+  Future<void> _sendTextMessage() async {
     final text = messageController.text.trim();
 
     if (text.isEmpty) {
       return;
     }
 
+    if (currentUser == null) {
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // EDIT MODE
+    // ----------------------------------------------------------
+
+    if (_editingMessageId != null) {
+      await _saveEditedMessage(text);
+      return;
+    }
+
+    messageController.clear();
+
+    FocusScope.of(context).unfocus();
+
     try {
       final message = MessageModel(
         id: "",
         senderId: currentUser!.uid,
         message: text,
+        imageUrl: null,
+        audioUrl: null,
         messageType: "text",
         isRead: false,
         createdAt: Timestamp.now(),
+        isEdited: false,
+        durationSeconds: null,
       );
 
       await chatService.sendMessage(
-        conversationId: widget.conversationId,
+        conversationId: _activeConversationId,
         message: message,
+      );
+
+      _scrollToBottom();
+
+      await _loadOwnerPropertyChats();
+    } catch (e) {
+      debugPrint("Send text error: $e");
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to send message: $e")));
+    }
+  }
+
+  // ============================================================
+  // START EDITING
+  // ============================================================
+
+  void _startEditing(MessageModel message) {
+    if (currentUser == null) return;
+
+    if (message.senderId != currentUser!.uid) {
+      return;
+    }
+
+    if (!message.isText) {
+      return;
+    }
+
+    setState(() {
+      _editingMessageId = message.id;
+      _editingOriginalText = message.message;
+
+      messageController.text = message.message;
+
+      messageController.selection = TextSelection.fromPosition(
+        TextPosition(offset: messageController.text.length),
+      );
+    });
+
+    FocusScope.of(context).requestFocus(FocusNode());
+  }
+
+  // ============================================================
+  // SAVE EDIT
+  // ============================================================
+
+  Future<void> _saveEditedMessage(String newText) async {
+    final messageId = _editingMessageId;
+
+    if (messageId == null) {
+      return;
+    }
+
+    if (newText.trim().isEmpty) {
+      return;
+    }
+
+    if (newText.trim() == _editingOriginalText.trim()) {
+      _cancelEditing();
+      return;
+    }
+
+    try {
+      await chatService.editMessage(
+        conversationId: _activeConversationId,
+        messageId: messageId,
+        newText: newText.trim(),
       );
 
       if (!mounted) return;
 
       messageController.clear();
 
-      _scrollToBottom();
+      setState(() {
+        _editingMessageId = null;
+        _editingOriginalText = "";
+      });
+
+      FocusScope.of(context).unfocus();
+
+      await _loadOwnerPropertyChats();
     } catch (e) {
-      debugPrint("Send message error: $e");
+      debugPrint("Edit message error: $e");
 
       if (!mounted) return;
 
-      _showSnack("Failed to send message");
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to edit message: $e")));
     }
   }
 
   // ============================================================
-  // PICK + SEND IMAGE
+  // CANCEL EDITING
   // ============================================================
 
-  Future<void> _pickAndSendImage() async {
-    if (currentUser == null || isUploading || isRecording) {
+  void _cancelEditing() {
+    messageController.clear();
+
+    if (!mounted) return;
+
+    setState(() {
+      _editingMessageId = null;
+      _editingOriginalText = "";
+    });
+
+    FocusScope.of(context).unfocus();
+  }
+
+  // ============================================================
+  // SHOW MESSAGE MENU
+  // ============================================================
+
+  void _showMessageMenu(MessageModel message) {
+    if (currentUser == null) {
+      return;
+    }
+
+    // Only your own messages can be edited/deleted.
+    if (message.senderId != currentUser!.uid) {
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // ------------------------------------------------
+                // EDIT
+                // ------------------------------------------------
+                if (message.isText)
+                  ListTile(
+                    leading: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEDE8F7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.edit_outlined,
+                        color: Color(0xFF6B46C1),
+                      ),
+                    ),
+                    title: const Text(
+                      "Edit message",
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text("Change this message"),
+                    onTap: () {
+                      Navigator.pop(context);
+
+                      _startEditing(message);
+                    },
+                  ),
+
+                // ------------------------------------------------
+                // DELETE
+                // ------------------------------------------------
+                ListTile(
+                  leading: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+                  title: const Text(
+                    "Delete message",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red,
+                    ),
+                  ),
+                  subtitle: const Text("Remove this message"),
+                  onTap: () {
+                    Navigator.pop(context);
+
+                    _confirmDeleteMessage(message);
+                  },
+                ),
+
+                const SizedBox(height: 6),
+
+                // ------------------------------------------------
+                // CANCEL
+                // ------------------------------------------------
+                ListTile(
+                  leading: const Icon(Icons.close, color: Colors.grey),
+                  title: const Text("Cancel"),
+                  onTap: () {
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // CONFIRM DELETE
+  // ============================================================
+
+  Future<void> _confirmDeleteMessage(MessageModel message) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Delete message?"),
+          content: const Text(
+            "This message will be permanently removed from the conversation.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    await _deleteMessage(message);
+  }
+
+  // ============================================================
+  // DELETE MESSAGE
+  // ============================================================
+
+  Future<void> _deleteMessage(MessageModel message) async {
+    try {
+      await chatService.deleteMessage(
+        conversationId: _activeConversationId,
+        messageId: message.id,
+      );
+
+      if (_editingMessageId == message.id) {
+        _cancelEditing();
+      }
+
+      await _loadOwnerPropertyChats();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Message deleted")));
+    } catch (e) {
+      debugPrint("Delete message error: $e");
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to delete message: $e")));
+    }
+  }
+
+  // ============================================================
+  // PICK IMAGE
+  // ============================================================
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (image == null) {
+        return;
+      }
+
+      await _uploadImage(File(image.path));
+    } catch (e) {
+      debugPrint("Pick image error: $e");
+    }
+  }
+
+  // ============================================================
+  // UPLOAD IMAGE
+  // ============================================================
+
+  Future<void> _uploadImage(File file) async {
+    if (currentUser == null) {
       return;
     }
 
     try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 75,
-      );
-
-      if (pickedFile == null) {
-        return;
-      }
-
-      if (!mounted) return;
-
       setState(() {
         isUploading = true;
       });
 
-      final url = await cloudinaryService.uploadImage(File(pickedFile.path));
+      final imageUrl = await cloudinaryService.uploadImage(file);
 
-      if (url == null || url.isEmpty) {
-        if (mounted) {
-          _showSnack("Failed to upload image");
-        }
-
-        return;
-      }
-
-      if (currentUser == null) {
-        return;
+      if (imageUrl == null || imageUrl.isEmpty) {
+        throw Exception("Image upload failed");
       }
 
       final message = MessageModel(
         id: "",
         senderId: currentUser!.uid,
-        message: url,
+        message: "",
+        imageUrl: imageUrl,
+        audioUrl: null,
         messageType: "image",
         isRead: false,
         createdAt: Timestamp.now(),
+        isEdited: false,
+        durationSeconds: null,
       );
 
-      await chatService.sendMessage(
-        conversationId: widget.conversationId,
+      await chatService.sendImageMessage(
+        conversationId: _activeConversationId,
         message: message,
       );
 
       _scrollToBottom();
-    } catch (e) {
-      debugPrint("Image error: $e");
 
-      if (mounted) {
-        _showSnack("Failed to send image");
-      }
+      await _loadOwnerPropertyChats();
+    } catch (e) {
+      debugPrint("Upload image error: $e");
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to send image: $e")));
     } finally {
       if (mounted) {
         setState(() {
@@ -503,391 +1350,231 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   // ============================================================
 
   Future<void> _startRecording() async {
-    _log('VOICE 01 - _startRecording START');
-
-    if (isUploading) {
-      _log('VOICE 02 - STOP: currently uploading');
-      return;
-    }
-
-    if (isRecording) {
-      _log('VOICE 03 - STOP: already recording');
-      return;
-    }
-
     try {
-      // --------------------------------------------------------
-      // MICROPHONE PERMISSION
-      // --------------------------------------------------------
+      final permission = await Permission.microphone.request();
 
-      _log('VOICE 04 - Requesting microphone permission');
+      if (!permission.isGranted) {
+        if (!mounted) return;
 
-      final status = await Permission.microphone.request();
-
-      if (!status.isGranted) {
-        _log('VOICE 04A - Microphone permission NOT granted: $status');
-
-        if (status.isPermanentlyDenied || status.isRestricted) {
-          if (mounted) {
-            _showMicrophonePermissionDialog();
-          }
-        } else {
-          _showSnack("Microphone permission is required");
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Microphone permission is required.")),
+        );
 
         return;
       }
 
-      _log('VOICE 05 - Microphone permission status=$status');
-
-      _log('VOICE 06 - isGranted=${status.isGranted}');
-
-      _log('VOICE 07 - isDenied=${status.isDenied}');
-
-      _log(
-        'VOICE 08 - isPermanentlyDenied='
-        '${status.isPermanentlyDenied}',
-      );
-
-      _log('VOICE 09 - isRestricted=${status.isRestricted}');
-
-      if (status.isPermanentlyDenied || status.isRestricted) {
-        _log('VOICE 10 - Permission permanently denied/restricted');
-
-        if (mounted) {
-          _showMicrophonePermissionDialog();
-        }
-
-        return;
-      }
-
-      if (!status.isGranted) {
-        _log('VOICE 11 - Permission NOT granted');
-        return;
-      }
-
-      _log('VOICE 12 - Permission granted');
-
-      // --------------------------------------------------------
-      // RECORDER PERMISSION
-      // --------------------------------------------------------
-
-      final hasPermission = await _recorder.hasPermission();
-
-      _log('VOICE 13 - recorder.hasPermission=$hasPermission');
+      final hasPermission = await _audioRecorder.hasPermission();
 
       if (!hasPermission) {
-        _log('VOICE 14 - Recorder does not have permission');
-
-        if (mounted) {
-          _showSnack("Microphone permission is required");
-        }
-
         return;
       }
-
-      // --------------------------------------------------------
-      // RECORDING PATH
-      // --------------------------------------------------------
 
       final directory = await getTemporaryDirectory();
 
-      _log('VOICE 15 - Temporary directory=${directory.path}');
+      final filePath =
+          "${directory.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a";
 
-      final path =
-          "${directory.path}/voice_"
-          "${DateTime.now().millisecondsSinceEpoch}.wav";
-
-      _log('VOICE 16 - Recording path=$path');
-
-      // --------------------------------------------------------
-      // START WAV RECORDING
-      // --------------------------------------------------------
-
-      _log('VOICE 17 - Starting recorder');
-
-      await _recorder.start(
+      await _audioRecorder.start(
         const RecordConfig(
-          encoder: AudioEncoder.wav,
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
           sampleRate: 44100,
-          numChannels: 1,
         ),
-        path: path,
+        path: filePath,
       );
 
-      _log('VOICE 18 - Recorder STARTED');
-
-      if (!mounted) {
-        _log('VOICE 19 - STOP: widget no longer mounted');
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         isRecording = true;
-        _recordingPath = path;
+        _recordingPath = filePath;
+        _recordingStartedAt = DateTime.now();
       });
-
-      _log('VOICE 20 - isRecording=true');
-
-      _log('VOICE 21 - _recordingPath=$path');
-
-      // --------------------------------------------------------
-      // START MICROPHONE AMPLITUDE MONITOR
-      // --------------------------------------------------------
-
-      _startAmplitudeMonitor();
-
-      _log('VOICE 22 - _startRecording END');
-    } catch (e, stackTrace) {
-      _log('VOICE ERROR - $e');
-
-      debugPrint('[CHAT][VOICE ERROR STACK] $stackTrace');
-
-      if (mounted) {
-        _showSnack("Could not start recording");
-      }
+    } catch (e) {
+      debugPrint("Start recording error: $e");
     }
   }
 
   // ============================================================
-  // MICROPHONE PERMISSION DIALOG
+  // STOP RECORDING
   // ============================================================
 
-  void _showMicrophonePermissionDialog() {
-    if (!mounted) return;
+  Future<void> _stopRecording() async {
+    try {
+      final path = await _audioRecorder.stop();
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text("Microphone Permission"),
-          content: const Text(
-            "Microphone access is disabled for RentEase. "
-            "Please enable microphone permission in Settings "
-            "to send voice messages.",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
+      final startedAt = _recordingStartedAt;
 
-                await openAppSettings();
-              },
-              child: const Text("Open Settings"),
-            ),
-          ],
-        );
-      },
-    );
+      if (!mounted) return;
+
+      setState(() {
+        isRecording = false;
+        _recordingStartedAt = null;
+      });
+
+      if (path == null || path.isEmpty) {
+        return;
+      }
+
+      _recordingPath = path;
+
+      int? durationSeconds;
+
+      if (startedAt != null) {
+        durationSeconds = DateTime.now().difference(startedAt).inSeconds;
+      }
+
+      await _uploadVoice(File(path), durationSeconds: durationSeconds);
+    } catch (e) {
+      debugPrint("Stop recording error: $e");
+
+      if (!mounted) return;
+
+      setState(() {
+        isRecording = false;
+        _recordingStartedAt = null;
+      });
+    }
   }
 
   // ============================================================
-  // STOP + SEND RECORDING
+  // UPLOAD VOICE
   // ============================================================
 
-  Future<void> _stopAndSendRecording() async {
-    if (!isRecording) {
+  Future<void> _uploadVoice(File file, {int? durationSeconds}) async {
+    if (currentUser == null) {
       return;
     }
 
     try {
-      // Stop amplitude monitoring before stopping recorder.
-      _stopAmplitudeMonitor();
+      setState(() {
+        isUploading = true;
+      });
 
-      _log('VOICE STOP 01 - Stopping recorder');
+      final audioUrl = await cloudinaryService.uploadAudio(file);
 
-      final path = await _recorder.stop();
-
-      _log('VOICE STOP 02 - Recorder stopped, path=$path');
-
-      if (mounted) {
-        setState(() {
-          isRecording = false;
-          _recordingPath = null;
-        });
+      if (audioUrl == null || audioUrl.isEmpty) {
+        throw Exception("Audio upload failed");
       }
-
-      if (path == null || path.isEmpty) {
-        _log('VOICE STOP 03 - No recording path');
-        return;
-      }
-
-      if (currentUser == null) {
-        await _deleteLocalFile(path);
-        return;
-      }
-
-      if (mounted) {
-        setState(() {
-          isUploading = true;
-        });
-      }
-
-      final file = File(path);
-
-      if (!await file.exists()) {
-        throw Exception("Recording file does not exist");
-      }
-
-      // --------------------------------------------------------
-      // CHECK LOCAL FILE
-      // --------------------------------------------------------
-
-      final fileSize = await file.length();
-
-      _log('VOICE FILE - path=$path');
-
-      _log('VOICE FILE - size=$fileSize bytes');
-
-      final bytes = await file.readAsBytes();
-
-      _log('VOICE FILE - total bytes=${bytes.length}');
-
-      // --------------------------------------------------------
-      // UPLOAD TO CLOUDINARY
-      // --------------------------------------------------------
-
-      _log('VOICE UPLOAD - Starting Cloudinary upload');
-
-      final url = await cloudinaryService.uploadAudio(file);
-
-      if (url == null || url.isEmpty) {
-        if (mounted) {
-          _showSnack("Failed to upload voice");
-        }
-
-        await _deleteLocalFile(path);
-
-        return;
-      }
-
-      _log('VOICE UPLOAD - Cloudinary URL=$url');
-
-      // --------------------------------------------------------
-      // CREATE MESSAGE
-      // --------------------------------------------------------
 
       final message = MessageModel(
         id: "",
         senderId: currentUser!.uid,
-        message: url,
-        messageType: "voice",
+        message: "",
+        imageUrl: null,
+        audioUrl: audioUrl,
+        messageType: "audio",
         isRead: false,
         createdAt: Timestamp.now(),
+        isEdited: false,
+        durationSeconds: durationSeconds,
       );
 
-      // Use generic sendMessage().
-      await chatService.sendMessage(
-        conversationId: widget.conversationId,
+      await chatService.sendVoiceMessage(
+        conversationId: _activeConversationId,
         message: message,
       );
 
-      _log('VOICE SEND - Voice message sent successfully');
-
       _scrollToBottom();
 
-      await _deleteLocalFile(path);
-    } catch (e, stackTrace) {
-      debugPrint("Voice upload error: $e");
+      await _loadOwnerPropertyChats();
+    } catch (e) {
+      debugPrint("Upload voice error: $e");
 
-      debugPrint("Voice upload stack: $stackTrace");
+      if (!mounted) return;
 
-      if (mounted) {
-        _showSnack("Failed to send voice message");
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to send voice message: $e")),
+      );
     } finally {
       if (mounted) {
         setState(() {
           isUploading = false;
         });
       }
+
+      try {
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+      } catch (_) {}
     }
   }
 
   // ============================================================
-  // CANCEL RECORDING
+  // AUDIO DURATION
   // ============================================================
 
-  Future<void> _cancelRecording() async {
-    if (!isRecording) {
-      debugPrint(
-        '[CHAT DEBUG] RECORD - '
-        'cancel ignored, not recording',
-      );
+  Future<void> _loadAudioDuration(
+    String url,
+    String messageId,
+    MessageModel message,
+  ) async {
+    if (message.durationSeconds != null && message.durationSeconds! > 0) {
+      if (!_audioDurations.containsKey(messageId)) {
+        if (mounted) {
+          setState(() {
+            _audioDurations[messageId] = Duration(
+              seconds: message.durationSeconds!,
+            );
+          });
+        }
+      }
 
       return;
     }
 
+    if (_audioDurations.containsKey(messageId)) {
+      return;
+    }
+
+    if (_loadingAudioDurations.contains(messageId)) {
+      return;
+    }
+
+    _loadingAudioDurations.add(messageId);
+
     try {
-      // Stop amplitude monitor first.
-      _stopAmplitudeMonitor();
+      final player = AudioPlayer();
 
-      debugPrint('[CHAT DEBUG] RECORD - cancelling recording');
+      await player.setSource(UrlSource(url));
 
-      final savedPath = _recordingPath;
+      final duration = await player.getDuration();
 
-      debugPrint('[CHAT DEBUG] RECORD - savedPath=$savedPath');
+      await player.dispose();
 
-      final stoppedPath = await _recorder.stop();
+      if (!mounted) return;
 
-      debugPrint(
-        '[CHAT DEBUG] RECORD - '
-        'stoppedPath=$stoppedPath',
-      );
+      setState(() {
+        _audioDurations[messageId] = duration;
+      });
+    } catch (e) {
+      debugPrint("Load audio duration error: $e");
 
-      if (mounted) {
-        setState(() {
-          isRecording = false;
-          _recordingPath = null;
-        });
-      }
+      if (!mounted) return;
 
-      final localPath = stoppedPath ?? savedPath;
-
-      debugPrint(
-        '[CHAT DEBUG] RECORD - '
-        'deleting path=$localPath',
-      );
-
-      if (localPath != null && localPath.isNotEmpty) {
-        await _deleteLocalFile(localPath);
-      }
-
-      debugPrint('[CHAT DEBUG] RECORD - cancel completed');
-    } catch (e, stackTrace) {
-      debugPrint('[CHAT DEBUG] RECORD CANCEL ERROR=$e');
-
-      debugPrint('[CHAT DEBUG] RECORD CANCEL STACK=$stackTrace');
-
-      if (mounted) {
-        setState(() {
-          isRecording = false;
-          _recordingPath = null;
-        });
-      }
+      setState(() {
+        _audioDurations[messageId] = null;
+      });
+    } finally {
+      _loadingAudioDurations.remove(messageId);
     }
   }
 
   // ============================================================
-  // DELETE LOCAL RECORDING FILE
+  // FORMAT DURATION
   // ============================================================
 
-  Future<void> _deleteLocalFile(String path) async {
-    try {
-      final file = File(path);
-
-      if (await file.exists()) {
-        await file.delete();
-      }
-    } catch (e) {
-      debugPrint("Delete local file error: $e");
+  String _formatDuration(Duration? duration) {
+    if (duration == null) {
+      return "0:00";
     }
+
+    final minutes = duration.inMinutes.remainder(60);
+
+    final seconds = duration.inSeconds.remainder(60);
+
+    return "$minutes:${seconds.toString().padLeft(2, '0')}";
   }
 
   // ============================================================
@@ -897,7 +1584,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _playVoice(String url, String messageId) async {
     try {
       if (currentlyPlayingId == messageId) {
-        await _audioPlayer.stop();
+        await _audioPlayer.pause();
 
         if (!mounted) return;
 
@@ -910,377 +1597,130 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
       await _audioPlayer.stop();
 
+      _audioPositions.clear();
+
+      await _audioPlayer.setPlaybackRate(_playbackSpeed);
+
+      await _audioPlayer.play(UrlSource(url));
+
       if (!mounted) return;
 
       setState(() {
         currentlyPlayingId = messageId;
       });
-
-      await _audioPlayer.play(UrlSource(url));
     } catch (e) {
       debugPrint("Play voice error: $e");
 
       if (!mounted) return;
 
-      setState(() {
-        currentlyPlayingId = null;
-      });
-
-      _showSnack("Unable to play voice message");
-    }
-  }
-
-  // ============================================================
-  // EDIT MESSAGE
-  // ============================================================
-
-  // ============================================================
-  // EDIT MESSAGE
-  // ============================================================
-
-  Future<void> _editMessage(MessageModel msg) async {
-    _log('EDIT 01 - _editMessage START');
-
-    if (!mounted) return;
-
-    if (msg.messageType != "text") {
-      _showSnack("Only text messages can be edited");
-      return;
-    }
-
-    if (msg.senderId != currentUser?.uid) {
-      _log('EDIT 02 - Message does not belong to current user');
-      return;
-    }
-
-    _logMessage("EDIT 03 - Selected message", msg);
-
-    // ----------------------------------------------------------
-    // SHOW EDIT DIALOG
-    //
-    // The controller belongs to the dialog.
-    // Do NOT create/dispose it in the parent State.
-    // ----------------------------------------------------------
-
-    final result = await showDialog<String>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        return _EditMessageDialog(
-          initialText: msg.message,
-          isDark: _isDarkMode(dialogContext),
-          textPrimary: _textPrimaryColor(dialogContext),
-          textSecondary: _textSecondaryColor(dialogContext),
-          surface: _surfaceColor(dialogContext),
-          onSave: (text) {
-            Navigator.of(dialogContext).pop(text);
-          },
-        );
-      },
-    );
-
-    _log('EDIT 04 - Dialog closed');
-    _log('EDIT 05 - result=$result');
-
-    if (!mounted) return;
-
-    if (result == null) {
-      _log('EDIT 06 - Edit cancelled');
-      return;
-    }
-
-    final newText = result.trim();
-
-    if (newText.isEmpty) {
-      _showSnack("Message cannot be empty");
-      return;
-    }
-
-    if (newText == msg.message.trim()) {
-      _log('EDIT 07 - Text unchanged');
-      return;
-    }
-
-    try {
-      _log('EDIT 08 - Updating Firestore');
-
-      await chatService.editMessage(
-        conversationId: widget.conversationId,
-        messageId: msg.id,
-        newText: newText,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Unable to play voice message.")),
       );
-
-      _log('EDIT 09 - Firestore update successful');
-
-      if (!mounted) return;
-
-      _showSnack("Message edited");
-    } catch (e, stackTrace) {
-      debugPrint('[CHAT DEBUG] EDIT ERROR - $e');
-      debugPrint('[CHAT DEBUG] EDIT STACKTRACE - $stackTrace');
-
-      if (!mounted) return;
-
-      _showSnack("Failed to edit message");
-    }
-
-    _log('EDIT 10 - _editMessage END');
-  }
-
-  // ============================================================
-  // DELETE MESSAGE
-  // ============================================================
-
-  Future<void> _deleteMessage(MessageModel msg) async {
-    if (msg.senderId != currentUser?.uid) {
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: _surfaceColor(dialogContext),
-          title: Text(
-            "Delete Message?",
-            style: TextStyle(color: _textPrimaryColor(dialogContext)),
-          ),
-          content: Text(
-            "Are you sure you want to delete this message?",
-            style: TextStyle(color: _textSecondaryColor(dialogContext)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text("Delete", style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted || confirmed != true) {
-      return;
-    }
-
-    try {
-      await chatService.deleteMessage(
-        conversationId: widget.conversationId,
-        messageId: msg.id,
-      );
-
-      if (currentlyPlayingId == msg.id) {
-        await _audioPlayer.stop();
-
-        if (!mounted) return;
-
-        setState(() {
-          currentlyPlayingId = null;
-        });
-      }
-    } catch (e) {
-      debugPrint("Delete message error: $e");
-
-      if (!mounted) return;
-
-      _showSnack("Failed to delete message");
     }
   }
 
   // ============================================================
-  // MESSAGE ACTION MENU
+  // CHANGE PLAYBACK SPEED
   // ============================================================
 
-  Future<void> _showMessageActions(MessageModel msg) async {
-    if (!mounted) return;
+  Future<void> _changePlaybackSpeed() async {
+    double newSpeed;
 
-    final bool isMe = msg.senderId == currentUser?.uid;
-
-    if (!isMe) {
-      return;
+    if (_playbackSpeed == 1.0) {
+      newSpeed = 1.5;
+    } else if (_playbackSpeed == 1.5) {
+      newSpeed = 2.0;
+    } else {
+      newSpeed = 1.0;
     }
 
-    final bool isText = msg.messageType == "text";
+    _playbackSpeed = newSpeed;
 
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: _surfaceColor(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              if (isText)
-                ListTile(
-                  leading: const Icon(Icons.edit_outlined, color: _primary),
-                  title: Text(
-                    "Edit Message",
-                    style: TextStyle(color: _textPrimaryColor(sheetContext)),
-                  ),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop("edit");
-                  },
-                ),
-
-              ListTile(
-                leading: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: Colors.red,
-                ),
-                title: const Text(
-                  "Delete Message",
-                  style: TextStyle(color: Colors.red),
-                ),
-                onTap: () {
-                  Navigator.of(sheetContext).pop("delete");
-                },
-              ),
-
-              ListTile(
-                leading: Icon(
-                  Icons.close_rounded,
-                  color: _textSecondaryColor(sheetContext),
-                ),
-                title: Text(
-                  "Cancel",
-                  style: TextStyle(color: _textPrimaryColor(sheetContext)),
-                ),
-                onTap: () {
-                  Navigator.of(sheetContext).pop("cancel");
-                },
-              ),
-
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
+    await _audioPlayer.setPlaybackRate(_playbackSpeed);
 
     if (!mounted) return;
 
-    if (result == "edit") {
-      await _editMessage(msg);
-    } else if (result == "delete") {
-      await _deleteMessage(msg);
-    }
+    setState(() {});
   }
 
   // ============================================================
-  // IMAGE PREVIEW
-  // ============================================================
-
-  void _previewImage(String imageUrl) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) {
-          return Scaffold(
-            backgroundColor: Colors.black,
-            appBar: AppBar(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              title: const Text(
-                "Image",
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-            ),
-            body: Center(
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4.0,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.contain,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) {
-                      return child;
-                    }
-
-                    return const CircularProgressIndicator(color: Colors.white);
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white,
-                      size: 60,
-                    );
-                  },
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // ============================================================
-  // SCROLL TO BOTTOM
+  // SCROLL
   // ============================================================
 
   void _scrollToBottom() {
-    if (!mounted) return;
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
       if (!_scrollController.hasClients) {
         return;
       }
 
-      if (!_scrollController.position.hasContentDimensions) {
-        return;
-      }
-
-      final maxScroll = _scrollController.position.maxScrollExtent;
-
       _scrollController.animateTo(
-        maxScroll,
-        duration: const Duration(milliseconds: 250),
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     });
   }
 
   // ============================================================
-  // SNACKBAR
+  // MARK CURRENT CONVERSATION AS READ
   // ============================================================
 
-  void _showSnack(String text) {
-    if (!mounted) {
+  Future<void> _markCurrentConversationUnreadAsRead() async {
+    if (currentUser == null) {
       return;
     }
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
-      );
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection("conversations")
+          .doc(_activeConversationId)
+          .collection("messages")
+          .where("senderId", isNotEqualTo: currentUser!.uid)
+          .where("isRead", isEqualTo: false)
+          .get();
+
+      for (final doc in snapshot.docs) {
+        await doc.reference.update({"isRead": true});
+      }
+
+      await FirebaseFirestore.instance
+          .collection("conversations")
+          .doc(_activeConversationId)
+          .set({"unreadCount": 0}, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Mark conversation read error: $e");
+    }
+  }
+
+  // ============================================================
+  // MARK MESSAGES AS READ
+  // ============================================================
+
+  Future<void> _markMessagesAsRead(List<MessageModel> messages) async {
+    if (currentUser == null) {
+      return;
+    }
+
+    for (final message in messages) {
+      if (message.senderId != currentUser!.uid && !message.isRead) {
+        try {
+          await chatService.markMessageAsRead(
+            _activeConversationId,
+            message.id,
+          );
+        } catch (e) {
+          debugPrint("Mark message read error: $e");
+        }
+      }
+    }
+  }
+
+  // ============================================================
+  // DATE FORMAT
+  // ============================================================
+
+  String _formatMessageTime(Timestamp timestamp) {
+    return DateFormat("h:mm a").format(timestamp.toDate());
   }
 
   // ============================================================
@@ -1289,354 +1729,479 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = _isDarkMode(context);
-
-    final Color background = _backgroundColor(context);
-
-    final Color surface = _surfaceColor(context);
-
-    final Color textPrimary = _textPrimaryColor(context);
-
-    final Color textSecondary = _textSecondaryColor(context);
-
     return Scaffold(
-      backgroundColor: background,
-
-      // ========================================================
-      // APP BAR
-      // ========================================================
-      appBar: AppBar(
-        backgroundColor: surface,
-        foregroundColor: textPrimary,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.hostName,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: textPrimary,
-              ),
-            ),
-            Text(
-              widget.propertyName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: textSecondary),
-            ),
-          ],
-        ),
-      ),
-
-      // ========================================================
-      // BODY
-      // ========================================================
+      backgroundColor: const Color(0xFFF9F8FD),
+      appBar: _buildAppBar(),
       body: Column(
         children: [
-          Expanded(
-            child: StreamBuilder<List<MessageModel>>(
-              stream: chatService.getMessages(widget.conversationId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    !snapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: _primary),
-                  );
-                }
+          _buildPropertyCard(),
 
-                if (snapshot.hasError) {
-                  debugPrint(
-                    "Message stream error: "
-                    "${snapshot.error}",
-                  );
+          Expanded(child: _buildMessages()),
 
-                  return Center(
-                    child: Text(
-                      "Failed to load messages",
-                      style: TextStyle(color: _textSecondaryColor(context)),
-                    ),
-                  );
-                }
-
-                final messages = snapshot.data ?? [];
-
-                // Detect new messages.
-                if (messages.length > _lastMessageCount) {
-                  _lastMessageCount = messages.length;
-
-                  if (_lastMessageCount > 1) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-
-                      if (!_scrollController.hasClients) {
-                        return;
-                      }
-
-                      if (!_scrollController.position.hasContentDimensions) {
-                        return;
-                      }
-
-                      _scrollController.jumpTo(
-                        _scrollController.position.maxScrollExtent,
-                      );
-                    });
-                  }
-                }
-
-                if (messages.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          size: 48,
-                          color: textSecondary.withOpacity(0.5),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          "No messages yet",
-                          style: TextStyle(color: textSecondary, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Start a conversation",
-                          style: TextStyle(
-                            color: textSecondary.withOpacity(0.7),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    return _buildBubble(messages[index]);
-                  },
-                );
-              },
-            ),
-          ),
-
-          // ======================================================
-          // UPLOAD PROGRESS
-          // ======================================================
-          if (isUploading)
-            const LinearProgressIndicator(
-              minHeight: 2,
-              color: _primary,
-              backgroundColor: Colors.transparent,
-            ),
-
-          // ======================================================
-          // RECORDING AREA
-          // ======================================================
-          if (isRecording) _buildRecordingArea(),
-
-          // ======================================================
-          // INPUT
-          // ======================================================
-          if (!isRecording)
-            Container(
-              padding: const EdgeInsets.fromLTRB(8, 10, 12, 20),
-              decoration: BoxDecoration(
-                color: surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.03)
-                        : Colors.black.withOpacity(0.04),
-                    blurRadius: 12,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  // ==================================================
-                  // GALLERY
-                  // ==================================================
-                  IconButton(
-                    onPressed: isUploading ? null : _pickAndSendImage,
-                    icon: const Icon(Icons.photo_library_rounded),
-                    color: _primary,
-                  ),
-
-                  // ==================================================
-                  // VOICE
-                  // ==================================================
-                  GestureDetector(
-                    onLongPressStart: (_) {
-                      _startRecording();
-                    },
-                    onLongPressEnd: (_) {
-                      _stopAndSendRecording();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: const BoxDecoration(shape: BoxShape.circle),
-                      child: Icon(
-                        Icons.mic_none_rounded,
-                        color: isUploading ? Colors.grey : _primary,
-                      ),
-                    ),
-                  ),
-
-                  // ==================================================
-                  // TEXT FIELD
-                  // ==================================================
-                  Expanded(
-                    child: TextField(
-                      controller: messageController,
-                      textCapitalization: TextCapitalization.sentences,
-                      enabled: !isUploading,
-                      style: TextStyle(color: textPrimary, fontSize: 15),
-                      cursorColor: _primary,
-                      decoration: InputDecoration(
-                        hintText: "Type a message...",
-                        hintStyle: TextStyle(color: textSecondary),
-                        filled: true,
-                        fillColor: isDark
-                            ? const Color(0xFF1A1A1A)
-                            : _lightBackground,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(28),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(28),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(28),
-                          borderSide: const BorderSide(color: _primary),
-                        ),
-                      ),
-                      onSubmitted: (_) {
-                        sendMessage();
-                      },
-                    ),
-                  ),
-
-                  const SizedBox(width: 6),
-
-                  // ==================================================
-                  // SEND
-                  // ==================================================
-                  GestureDetector(
-                    onTap: isUploading ? null : sendMessage,
-                    child: Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: isUploading ? Colors.grey : _primary,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.send_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          _buildInputArea(),
         ],
       ),
     );
   }
 
   // ============================================================
-  // RECORDING AREA
+  // APP BAR
   // ============================================================
 
-  Widget _buildRecordingArea() {
-    final bool isDark = _isDarkMode(context);
+  PreferredSizeWidget _buildAppBar() {
+    final ownerImage = _getOwnerImage();
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
-      color: _surfaceColor(context),
-      child: Row(
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      surfaceTintColor: Colors.white,
+
+      leading: IconButton(
+        icon: const Icon(
+          Icons.arrow_back_ios_new,
+          color: Colors.black87,
+          size: 20,
+        ),
+        onPressed: _handleBack,
+      ),
+
+      titleSpacing: 0,
+
+      title: Row(
         children: [
-          // ======================================================
-          // CANCEL RECORDING
-          // ======================================================
-          IconButton(
-            onPressed: _cancelRecording,
-            icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-            tooltip: "Cancel recording",
-          ),
-
-          // ======================================================
-          // RECORDING STATUS
-          // ======================================================
-          Expanded(
-            child: Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A1A1A) : _lightBackground,
-                borderRadius: BorderRadius.circular(28),
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: 21,
+                backgroundColor: const Color(0xFFE8E0F8),
+                backgroundImage: ownerImage != null
+                    ? NetworkImage(ownerImage)
+                    : null,
+                child: ownerImage == null
+                    ? const Icon(Icons.person, color: Color(0xFF6B46C1))
+                    : null,
               ),
-              child: const Row(
-                children: [
-                  Icon(Icons.mic_rounded, color: Colors.red),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Recording voice...",
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w600,
-                      ),
+
+              if (_isOwnerOnline())
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
                     ),
                   ),
-                  Text(
-                    "Release to send",
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
+                ),
+            ],
           ),
 
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
 
-          // ======================================================
-          // SEND RECORDING
-          // ======================================================
-          GestureDetector(
-            onTap: _stopAndSendRecording,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: const BoxDecoration(
-                color: _primary,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.send_rounded, color: Colors.white),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _getOwnerName(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+
+                const SizedBox(height: 2),
+
+                Text(
+                  _isOwnerOnline() ? "Online" : "Host",
+                  style: TextStyle(
+                    color: _isOwnerOnline()
+                        ? Colors.green
+                        : Colors.grey.shade600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+
+      actions: [
+        IconButton(
+          onPressed: _showPropertySelector,
+          tooltip: "Properties",
+          icon: const Icon(Icons.home_work_outlined, color: Color(0xFF6B46C1)),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // PROPERTY CARD
+  // ============================================================
+
+  Widget _buildPropertyCard() {
+    if (_loadingProperty) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 70,
+              height: 70,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                "Loading property...",
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final propertyImage = _getPropertyImage();
+
+    final propertyName = _getPropertyName();
+
+    final propertyType = _getPropertyType();
+
+    final propertyStatus = _getPropertyStatus();
+
+    final verified = _isPropertyVerified();
+
+    return GestureDetector(
+      onTap: _showPropertySelector,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE7E0F3)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: SizedBox(
+                width: 76,
+                height: 76,
+                child: propertyImage != null
+                    ? Image.network(
+                        propertyImage,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) {
+                          return _propertyPlaceholder();
+                        },
+                      )
+                    : _propertyPlaceholder(),
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE8F7),
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: const Text(
+                          "CURRENT CHAT",
+                          style: TextStyle(
+                            color: Color(0xFF6B46C1),
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 7),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          propertyName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+
+                      if (verified)
+                        const Icon(
+                          Icons.verified,
+                          size: 17,
+                          color: Color(0xFF6B46C1),
+                        ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    propertyType,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+
+                  if (propertyStatus.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _statusColor(
+                              propertyStatus,
+                            ).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            propertyStatus,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: _statusColor(propertyStatus),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1EDF9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.swap_vert,
+                color: Color(0xFF6B46C1),
+                size: 20,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PROPERTY PLACEHOLDER
+  // ============================================================
+
+  Widget _propertyPlaceholder({bool loading = false}) {
+    return Container(
+      color: const Color(0xFFEDE8F7),
+      child: Center(
+        child: loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(
+                Icons.home_outlined,
+                color: Color(0xFF6B46C1),
+                size: 30,
+              ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // STATUS COLOR
+  // ============================================================
+
+  Color _statusColor(String status) {
+    final value = status.toLowerCase();
+
+    if (value.contains("available")) {
+      return Colors.green;
+    }
+
+    if (value.contains("rent")) {
+      return Colors.orange;
+    }
+
+    if (value.contains("pending")) {
+      return Colors.orange;
+    }
+
+    if (value.contains("approved")) {
+      return Colors.green;
+    }
+
+    if (value.contains("reject")) {
+      return Colors.red;
+    }
+
+    if (value.contains("cancel")) {
+      return Colors.red;
+    }
+
+    return const Color(0xFF6B46C1);
+  }
+
+  // ============================================================
+  // MESSAGES
+  // ============================================================
+
+  Widget _buildMessages() {
+    if (_loadingConversation) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_activeConversationId.trim().isEmpty) {
+      return const Center(child: Text("Conversation not found."));
+    }
+
+    return StreamBuilder<List<MessageModel>>(
+      stream: chatService.getMessages(_activeConversationId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                "Unable to load messages.\n\n${snapshot.error}",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+            ),
+          );
+        }
+
+        final messages = snapshot.data ?? [];
+
+        if (messages.length != _lastMessageCount) {
+          _lastMessageCount = messages.length;
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToBottom();
+          });
+        }
+
+        _markMessagesAsRead(messages);
+
+        if (messages.isEmpty) {
+          return _buildEmptyMessages();
+        }
+
+        return ListView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          itemCount: messages.length,
+          itemBuilder: (context, index) {
+            final message = messages[index];
+
+            final isMe = message.senderId == currentUser?.uid;
+
+            return _buildMessageBubble(message, isMe);
+          },
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // EMPTY MESSAGES
+  // ============================================================
+
+  Widget _buildEmptyMessages() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDE8F7),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                color: Color(0xFF6B46C1),
+                size: 32,
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            const Text(
+              "Start a conversation",
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            ),
+
+            const SizedBox(height: 6),
+
+            Text(
+              "Send a message to ${_getOwnerName()} about ${_getPropertyName()}",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1645,79 +2210,80 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   // MESSAGE BUBBLE
   // ============================================================
 
-  Widget _buildBubble(MessageModel msg) {
-    final bool isMe = msg.senderId == currentUser?.uid;
-
-    final bool isDark = _isDarkMode(context);
-
-    final Color textPrimary = _textPrimaryColor(context);
-
-    final Color textSecondary = _textSecondaryColor(context);
-
-    final Color otherBubble = isDark ? const Color(0xFF1A1A1A) : Colors.white;
-
-    final time = DateFormat('HH:mm').format(msg.createdAt.toDate());
-
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onLongPress: isMe ? () => _showMessageActions(msg) : null,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          child: Column(
-            crossAxisAlignment: isMe
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              // ==================================================
-              // MESSAGE CONTENT
-              // ==================================================
-              Container(
-                padding: msg.messageType == "image"
-                    ? const EdgeInsets.all(4)
-                    : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isMe ? _primary : otherBubble,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(isMe ? 18 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 18),
-                  ),
-                ),
-                child: _buildContent(msg, isMe),
+  Widget _buildMessageBubble(MessageModel message, bool isMe) {
+    return GestureDetector(
+      onLongPress: isMe
+          ? () {
+              _showMessageMenu(message);
+            }
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          mainAxisAlignment: isMe
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!isMe) ...[
+              CircleAvatar(
+                radius: 15,
+                backgroundColor: const Color(0xFFE8E0F8),
+                backgroundImage: _getOwnerImage() != null
+                    ? NetworkImage(_getOwnerImage()!)
+                    : null,
+                child: _getOwnerImage() == null
+                    ? const Icon(
+                        Icons.person,
+                        size: 17,
+                        color: Color(0xFF6B46C1),
+                      )
+                    : null,
               ),
 
-              const SizedBox(height: 3),
+              const SizedBox(width: 7),
+            ],
 
-              // ==================================================
-              // TIME + EDITED
-              // ==================================================
-              Row(
-                mainAxisSize: MainAxisSize.min,
+            Flexible(
+              child: Column(
+                crossAxisAlignment: isMe
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    time,
-                    style: TextStyle(fontSize: 11, color: textSecondary),
-                  ),
-                  if (msg.isEdited) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      "Edited",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: textSecondary,
-                        fontStyle: FontStyle.italic,
-                      ),
+                  _buildMessageContent(message, isMe),
+
+                  const SizedBox(height: 3),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatMessageTime(message.createdAt),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+
+                        if (message.isEdited) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            "edited",
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1727,106 +2293,552 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   // MESSAGE CONTENT
   // ============================================================
 
-  Widget _buildContent(MessageModel msg, bool isMe) {
-    final Color textPrimary = _textPrimaryColor(context);
+  Widget _buildMessageContent(MessageModel message, bool isMe) {
+    if (message.isImage &&
+        message.imageUrl != null &&
+        message.imageUrl!.isNotEmpty) {
+      return _buildImageMessage(message, isMe);
+    }
 
-    switch (msg.messageType) {
-      // ========================================================
-      // IMAGE
-      // ========================================================
+    if (message.isAudio || message.messageType == "voice") {
+      if (message.audioUrl != null && message.audioUrl!.isNotEmpty) {
+        _loadAudioDuration(message.audioUrl!, message.id, message);
 
-      case "image":
-        return GestureDetector(
-          onTap: () {
-            _previewImage(msg.message);
-          },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Image.network(
-              msg.message,
+        return _buildVoiceMessage(message, isMe);
+      }
+    }
+
+    return _buildTextMessage(message, isMe);
+  }
+
+  // ============================================================
+  // TEXT MESSAGE
+  // ============================================================
+
+  Widget _buildTextMessage(MessageModel message, bool isMe) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isMe ? const Color(0xFF6B46C1) : Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(17),
+          topRight: const Radius.circular(17),
+          bottomLeft: Radius.circular(isMe ? 17 : 4),
+          bottomRight: Radius.circular(isMe ? 4 : 17),
+        ),
+        boxShadow: !isMe
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Text(
+        message.message,
+        style: TextStyle(
+          color: isMe ? Colors.white : Colors.black87,
+          fontSize: 14,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // IMAGE MESSAGE
+  // ============================================================
+
+  Widget _buildImageMessage(MessageModel message, bool isMe) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: GestureDetector(
+        onTap: () {
+          _showFullImage(message.imageUrl!);
+        },
+        child: Image.network(
+          message.imageUrl!,
+          width: 220,
+          height: 220,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) {
+              return child;
+            }
+
+            return Container(
               width: 220,
               height: 220,
-              fit: BoxFit.cover,
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) {
-                  return child;
-                }
-
-                return const SizedBox(
-                  width: 220,
-                  height: 220,
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _primary,
-                    ),
-                  ),
-                );
-              },
-              errorBuilder: (context, error, stackTrace) {
-                return const SizedBox(
-                  width: 220,
-                  height: 160,
-                  child: Center(
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.grey,
-                      size: 40,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-
-      // ========================================================
-      // VOICE
-      // ========================================================
-
-      case "voice":
-        final bool isPlaying = currentlyPlayingId == msg.id;
-
-        return GestureDetector(
-          onTap: () {
-            _playVoice(msg.message, msg.id);
+              color: const Color(0xFFEDE8F7),
+              child: const Center(child: CircularProgressIndicator()),
+            );
           },
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isPlaying
-                    ? Icons.pause_circle_filled
-                    : Icons.play_circle_filled,
-                color: isMe ? Colors.white : _primary,
-                size: 36,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              width: 220,
+              height: 150,
+              color: const Color(0xFFEDE8F7),
+              child: const Center(
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: Color(0xFF6B46C1),
+                  size: 35,
+                ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                isPlaying ? "Playing..." : "Voice message",
-                style: TextStyle(
-                  color: isMe ? Colors.white : textPrimary,
-                  fontWeight: FontWeight.w500,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // FULL IMAGE
+  // ============================================================
+
+  void _showFullImage(String url) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(10),
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  child: Image.network(url, fit: BoxFit.contain),
+                ),
+              ),
+
+              Positioned(
+                top: 10,
+                right: 10,
+                child: IconButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
                 ),
               ),
             ],
           ),
         );
-
-      // ========================================================
-      // TEXT
-      // ========================================================
-
-      case "text":
-      default:
-        return Text(
-          msg.message,
-          style: TextStyle(
-            color: isMe ? Colors.white : textPrimary,
-            fontSize: 15,
-            height: 1.35,
-          ),
-        );
-    }
+      },
+    );
   }
+
+  // ============================================================
+  // VOICE MESSAGE
+  // ============================================================
+
+  Widget _buildVoiceMessage(MessageModel message, bool isMe) {
+    final isPlaying = currentlyPlayingId == message.id;
+
+    final duration = _audioDurations[message.id];
+
+    final position = _audioPositions[message.id] ?? Duration.zero;
+
+    final maxSeconds = duration?.inMilliseconds.toDouble() ?? 1.0;
+
+    final positionSeconds = position.inMilliseconds.toDouble().clamp(
+      0.0,
+      maxSeconds,
+    );
+
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isMe ? const Color(0xFF6B46C1) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: !isMe
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () {
+              _playVoice(message.audioUrl!, message.id);
+            },
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: isMe
+                    ? Colors.white.withOpacity(0.18)
+                    : const Color(0xFFEDE8F7),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isPlaying ? Icons.pause : Icons.play_arrow,
+                color: isMe ? Colors.white : const Color(0xFF6B46C1),
+                size: 24,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildVoiceWaveform(
+                        isMe: isMe,
+                        isPlaying: isPlaying,
+                      ),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    Text(
+                      duration == null
+                          ? "..."
+                          : _formatDuration(isPlaying ? position : duration),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isMe ? Colors.white : Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 2),
+
+                if (isPlaying && duration != null)
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 4,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 8,
+                      ),
+                    ),
+                    child: Slider(
+                      min: 0,
+                      max: maxSeconds,
+                      value: positionSeconds,
+                      activeColor: isMe
+                          ? Colors.white
+                          : const Color(0xFF6B46C1),
+                      inactiveColor: isMe
+                          ? Colors.white.withOpacity(0.25)
+                          : Colors.grey.shade300,
+                      onChanged: (value) async {
+                        await _audioPlayer.seek(
+                          Duration(milliseconds: value.round()),
+                        );
+                      },
+                    ),
+                  ),
+
+                if (!isPlaying)
+                  Text(
+                    "Voice message",
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isMe
+                          ? Colors.white.withOpacity(0.8)
+                          : Colors.grey.shade500,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          GestureDetector(
+            onTap: _changePlaybackSpeed,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(
+                color: isMe
+                    ? Colors.white.withOpacity(0.15)
+                    : const Color(0xFFF1EDF9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                "${_playbackSpeed}x",
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: isMe ? Colors.white : const Color(0xFF6B46C1),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // VOICE WAVEFORM
+  // ============================================================
+
+  Widget _buildVoiceWaveform({required bool isMe, required bool isPlaying}) {
+    final heights = [
+      8.0,
+      15.0,
+      10.0,
+      20.0,
+      13.0,
+      24.0,
+      17.0,
+      12.0,
+      22.0,
+      15.0,
+      25.0,
+      10.0,
+      18.0,
+      13.0,
+      21.0,
+      9.0,
+      16.0,
+      12.0,
+    ];
+
+    return SizedBox(
+      height: 28,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: heights.map((height) {
+          return Expanded(
+            child: Container(
+              height: height,
+              margin: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(
+                color: isMe
+                    ? Colors.white.withOpacity(isPlaying ? 0.95 : 0.65)
+                    : const Color(
+                        0xFF6B46C1,
+                      ).withOpacity(isPlaying ? 0.9 : 0.35),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ============================================================
+  // INPUT AREA
+  // ============================================================
+
+  Widget _buildInputArea() {
+    final isEditing = _editingMessageId != null;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 12,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ----------------------------------------------------
+            // EDITING BAR
+            // ----------------------------------------------------
+            if (isEditing)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1EDF9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: Color(0xFF6B46C1),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    const Expanded(
+                      child: Text(
+                        "Editing message",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6B46C1),
+                        ),
+                      ),
+                    ),
+
+                    IconButton(
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                      padding: EdgeInsets.zero,
+                      onPressed: _cancelEditing,
+                      icon: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // ------------------------------------------------
+                // IMAGE
+                // ------------------------------------------------
+                if (!isEditing)
+                  IconButton(
+                    onPressed: isUploading ? null : _pickImage,
+                    icon: const Icon(
+                      Icons.image_outlined,
+                      color: Color(0xFF6B46C1),
+                    ),
+                  ),
+
+                // ------------------------------------------------
+                // TEXT
+                // ------------------------------------------------
+                Expanded(
+                  child: Container(
+                    constraints: const BoxConstraints(maxHeight: 110),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F3F9),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: TextField(
+                      controller: messageController,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.newline,
+                      decoration: InputDecoration(
+                        hintText: isEditing
+                            ? "Edit message..."
+                            : "Write a message...",
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 4),
+
+                // ------------------------------------------------
+                // SEND / VOICE
+                // ------------------------------------------------
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: messageController,
+                  builder: (context, value, child) {
+                    final hasText = value.text.trim().isNotEmpty;
+
+                    if (hasText) {
+                      return IconButton(
+                        onPressed: isUploading ? null : _sendTextMessage,
+                        icon: Icon(
+                          isEditing ? Icons.check : Icons.send,
+                          color: const Color(0xFF6B46C1),
+                        ),
+                      );
+                    }
+
+                    if (isEditing) {
+                      return IconButton(
+                        onPressed: _cancelEditing,
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                      );
+                    }
+
+                    return GestureDetector(
+                      onLongPress: _startRecording,
+                      onLongPressUp: _stopRecording,
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: isRecording
+                              ? Colors.red
+                              : const Color(0xFF6B46C1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isRecording ? Icons.stop : Icons.mic,
+                          color: Colors.white,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ================================================================
+// PROPERTY CONVERSATION MODEL
+// ================================================================
+
+class _PropertyConversation {
+  final String conversationId;
+
+  final String houseId;
+
+  final String propertyName;
+
+  final String propertyImage;
+
+  final String lastMessage;
+
+  final Timestamp updatedAt;
+
+  const _PropertyConversation({
+    required this.conversationId,
+    required this.houseId,
+    required this.propertyName,
+    required this.propertyImage,
+    required this.lastMessage,
+    required this.updatedAt,
+  });
 }

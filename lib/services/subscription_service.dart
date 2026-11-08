@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/subscription_model.dart';
+import 'bakong_service.dart';
 
 class SubscriptionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -14,6 +15,15 @@ class SubscriptionService {
 
   CollectionReference<Map<String, dynamic>> get _planCollection =>
       _firestore.collection('subscription_plans');
+
+  // ==========================================================
+  // BAKONG PAYMENT CONFIG
+  // ==========================================================
+
+  static const String bakongReceiver = 'thearith_panha@bkrt';
+
+  static const double testPaymentAmount = 100.0;
+  static const String testPaymentCurrency = 'KHR';
 
   // ==========================================================
   // GET ACTIVE SUBSCRIPTION
@@ -488,38 +498,354 @@ class SubscriptionService {
   // CREATE SUBSCRIPTION
   // ==========================================================
 
-  Future<String> createSubscription({
+  // Future<String> createSubscription({
+  //   required String ownerId,
+  //   required String planId,
+  //   required String planName,
+  //   required double amount,
+  //   String currency = 'USD',
+  //   required String paymentMethod,
+  //   String paymentReference = '',
+  // }) async {
+  //   final doc = _subscriptionCollection.doc();
+  //
+  //   final subscription = SubscriptionModel(
+  //     subscriptionId: doc.id,
+  //     ownerId: ownerId,
+  //     planId: planId,
+  //     planName: planName,
+  //     amount: amount,
+  //     currency: currency,
+  //     status: 'pending',
+  //     paymentMethod: paymentMethod,
+  //     paymentReference: paymentReference,
+  //     startDate: null,
+  //     endDate: null,
+  //     createdAt: DateTime.now(),
+  //     updatedAt: null,
+  //     approvedBy: '',
+  //     approvedAt: null,
+  //   );
+  //
+  //   await doc.set(subscription.toFirestore());
+  //
+  //   return doc.id;
+  // }
+
+
+  // ==========================================================
+  // COMPLETE SUBSCRIPTION PAYMENT WITH BAKONG
+  // ==========================================================
+
+  Future<Map<String, dynamic>> completeSubscriptionPayment({
     required String ownerId,
     required String planId,
     required String planName,
     required double amount,
-    String currency = 'USD',
-    required String paymentMethod,
-    String paymentReference = '',
+    required String bakongMd5,
+    required String paymentReference,
   }) async {
-    final doc = _subscriptionCollection.doc();
+    try {
+      final cleanOwnerId = ownerId.trim();
+      final cleanPlanId = planId.trim();
+      final cleanPlanName = planName.trim();
+      final cleanMd5 = bakongMd5.trim();
+      final cleanReference = paymentReference.trim();
 
-    final subscription = SubscriptionModel(
-      subscriptionId: doc.id,
-      ownerId: ownerId,
-      planId: planId,
-      planName: planName,
-      amount: amount,
-      currency: currency,
-      status: 'pending',
-      paymentMethod: paymentMethod,
-      paymentReference: paymentReference,
-      startDate: null,
-      endDate: null,
-      createdAt: DateTime.now(),
-      updatedAt: null,
-      approvedBy: '',
-      approvedAt: null,
+      if (cleanOwnerId.isEmpty) {
+        throw Exception('Owner ID is required.');
+      }
+
+      if (cleanPlanId.isEmpty) {
+        throw Exception('Plan ID is required.');
+      }
+
+      if (cleanMd5.isEmpty) {
+        throw Exception('Bakong MD5 is required.');
+      }
+
+      if (cleanReference.isEmpty) {
+        throw Exception('Payment reference is required.');
+      }
+
+      // --------------------------------------------------------
+      // 1. Check whether owner already has pending subscription
+      // --------------------------------------------------------
+
+      final hasPending = await hasPendingSubscription(cleanOwnerId);
+
+      if (hasPending) {
+        throw Exception(
+          'You already have a pending subscription. '
+              'Please wait for admin approval.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 2. Verify transaction with Bakong
+      // --------------------------------------------------------
+
+      print('');
+      print('========================================');
+      print('VERIFY SUBSCRIPTION BAKONG PAYMENT');
+      print('Owner ID: $cleanOwnerId');
+      print('Plan ID: $cleanPlanId');
+      print('Plan Name: $cleanPlanName');
+      print('Plan Amount: $amount USD');
+      print('Bakong MD5: $cleanMd5');
+      print('========================================');
+
+      final result = await BakongService.checkTransactionByMd5(cleanMd5);
+
+      // --------------------------------------------------------
+      // 3. Rate limit
+      // --------------------------------------------------------
+
+      if (result.rateLimited) {
+        throw Exception(
+          'Bakong daily request limit reached. '
+              'Please try again later.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 4. Unauthorized
+      // --------------------------------------------------------
+
+      if (result.unauthorized) {
+        throw Exception(
+          'Bakong authorization failed. '
+              'Please check your Bakong configuration.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 5. Transaction not found / not successful
+      // --------------------------------------------------------
+
+      if (!result.paid || result.data == null) {
+        throw Exception(
+          result.responseMessage ??
+              'Bakong payment was not completed.',
+        );
+      }
+
+      final data = result.data!;
+
+      // --------------------------------------------------------
+      // 6. Read Bakong transaction information
+      // --------------------------------------------------------
+
+      final transactionHash =
+          data['hash']?.toString().trim() ??
+              data['transactionHash']?.toString().trim() ??
+              '';
+
+      final sender =
+          data['fromAccountId']?.toString().trim() ??
+              data['sender']?.toString().trim() ??
+              data['senderAccount']?.toString().trim() ??
+              '';
+
+      final receiver =
+          data['toAccountId']?.toString().trim() ??
+              data['receiver']?.toString().trim() ??
+              data['receiverAccount']?.toString().trim() ??
+              '';
+
+      final transactionAmount =
+      _parseDouble(
+        data['amount'] ??
+            data['transactionAmount'] ??
+            data['amountValue'],
+      );
+
+      final transactionCurrency =
+          data['currency']?.toString().trim().toUpperCase() ??
+              '';
+
+      // --------------------------------------------------------
+      // 7. Validate transaction hash
+      // --------------------------------------------------------
+
+      if (transactionHash.isEmpty) {
+        throw Exception(
+          'Bakong transaction hash was not returned.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 8. Validate receiver
+      // --------------------------------------------------------
+
+      if (receiver.isNotEmpty &&
+          receiver.toLowerCase() !=
+              bakongReceiver.toLowerCase()) {
+        throw Exception(
+          'Bakong payment receiver is incorrect.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 9. Validate currency
+      // --------------------------------------------------------
+
+      if (transactionCurrency.isNotEmpty &&
+          transactionCurrency != testPaymentCurrency) {
+        throw Exception(
+          'Invalid payment currency. '
+              'Expected $testPaymentCurrency but received '
+              '$transactionCurrency.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 10. Validate test payment amount
+      // --------------------------------------------------------
+
+      if (transactionAmount == null) {
+        throw Exception(
+          'Bakong transaction amount was not returned.',
+        );
+      }
+
+      if (transactionAmount != testPaymentAmount) {
+        throw Exception(
+          'Invalid payment amount. '
+              'Expected $testPaymentAmount $testPaymentCurrency '
+              'but received $transactionAmount '
+              '$transactionCurrency.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 11. Check duplicate transaction
+      // --------------------------------------------------------
+
+      final duplicateSnapshot = await _subscriptionCollection
+          .where(
+        'bakongTransactionHash',
+        isEqualTo: transactionHash,
+      )
+          .limit(1)
+          .get();
+
+      if (duplicateSnapshot.docs.isNotEmpty) {
+        throw Exception(
+          'This Bakong transaction has already been used.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // 12. Create subscription
+      // --------------------------------------------------------
+
+      final doc = _subscriptionCollection.doc();
+
+      final now = DateTime.now();
+
+      final subscription = <String, dynamic>{
+        'subscriptionId': doc.id,
+
+        // Owner
+        'ownerId': cleanOwnerId,
+
+        // Plan
+        'planId': cleanPlanId,
+        'planName': cleanPlanName,
+
+        // REAL subscription price
+        'amount': amount,
+        'currency': 'USD',
+
+        // Subscription status
+        //
+        // Payment is already successful,
+        // but admin still needs to approve it.
+        'status': 'pending',
+
+        // Payment information
+        'paymentMethod': 'Bakong',
+        'paymentReference': cleanReference,
+        'paymentStatus': 'paid',
+
+        // Bakong information
+        'bakongMd5': cleanMd5,
+        'bakongReceiver': receiver.isNotEmpty
+            ? receiver
+            : bakongReceiver,
+        'bakongSender': sender,
+        'bakongTransactionHash': transactionHash,
+
+        // Test payment information
+        'testPaymentAmount': testPaymentAmount,
+        'testPaymentCurrency': testPaymentCurrency,
+
+        // Subscription dates
+        'startDate': null,
+        'endDate': null,
+
+        // Admin approval
+        'approvedBy': '',
+        'approvedAt': null,
+
+        // Timestamps
+        'createdAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      };
+
+      await doc.set(subscription);
+
+      print('');
+      print('========================================');
+      print('SUBSCRIPTION PAYMENT SUCCESS');
+      print('Subscription ID: ${doc.id}');
+      print('Owner ID: $cleanOwnerId');
+      print('Plan: $cleanPlanName');
+      print('Plan Amount: $amount USD');
+      print('Payment: $testPaymentAmount $testPaymentCurrency');
+      print('Payment Status: paid');
+      print('Subscription Status: pending');
+      print('Bakong Hash: $transactionHash');
+      print('========================================');
+
+      return {
+        'success': true,
+        'subscriptionId': doc.id,
+        'paymentStatus': 'paid',
+        'status': 'pending',
+        'bakongTransactionHash': transactionHash,
+        'bakongSender': sender,
+        'bakongReceiver':
+        receiver.isNotEmpty ? receiver : bakongReceiver,
+        'amount': amount,
+        'currency': 'USD',
+        'testPaymentAmount': testPaymentAmount,
+        'testPaymentCurrency': testPaymentCurrency,
+      };
+    } catch (e) {
+      print('ERROR completeSubscriptionPayment: $e');
+
+      rethrow;
+    }
+  }
+
+  // ==========================================================
+  // PARSE DOUBLE
+  // ==========================================================
+
+  double? _parseDouble(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+      value.toString().replaceAll(',', '').trim(),
     );
-
-    await doc.set(subscription.toFirestore());
-
-    return doc.id;
   }
 
   // ==========================================================

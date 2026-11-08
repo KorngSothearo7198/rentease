@@ -1,3 +1,4 @@
+
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,10 +12,12 @@ import 'package:rentease/features/renter/screens/search_screen.dart';
 import '../../../models/property_model.dart';
 import '../../../models/user_model.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/chat_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/property_service.dart';
 
 import 'bottom_nav_bar.dart';
+import 'chat_list_screen.dart';
 import 'favorites_screen.dart';
 import 'notification_screen.dart';
 
@@ -43,9 +46,7 @@ class _RenterHomeScreenState extends State<RenterHomeScreen> {
       bottomNavigationBar: CapsuleBottomNav(
         currentIndex: _currentIndex,
         onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
+          setState(() => _currentIndex = index);
         },
       ),
     );
@@ -64,308 +65,513 @@ class HomeFeedScreen extends StatefulWidget {
 }
 
 class _HomeFeedScreenState extends State<HomeFeedScreen> {
-  final TextEditingController searchController = TextEditingController();
-
-  final PropertyService propertyService = PropertyService();
-
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   static const Color accentColor = Color(0xFFFBBF24);
+  static const int _pageSize = 6;
 
-  String _searchText = "";
-
-  /// null = All categories
-  String? _selectedCategoryId;
-
-  bool _isLoadingProfile = true;
-
-  UserModel? _currentUser;
-
+  final TextEditingController searchController = TextEditingController();
+  final PropertyService propertyService = PropertyService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthService _authService = AuthService();
 
-  // ============================================================
-  // THEME COLORS
-  // ============================================================
+  String _searchText = '';
+  String? _selectedCategoryId;
 
-  Color get _backgroundColor {
-    final colors = Theme.of(context).colorScheme;
+  double? _minPrice;
+  double? _maxPrice;
 
-    return colors.surface;
-  }
+  int _visibleCount = _pageSize;
 
-  Color get _cardColor {
-    final colors = Theme.of(context).colorScheme;
+  bool _isLoadingProfile = true;
+  UserModel? _currentUser;
 
-    return colors.surfaceContainer;
-  }
+  bool get _isDark =>
+      Theme.of(context).brightness == Brightness.dark;
 
-  Color get _cardColorHighest {
-    final colors = Theme.of(context).colorScheme;
+  Color get _backgroundColor =>
+      Theme.of(context).colorScheme.surface;
 
-    return colors.surfaceContainerHighest;
-  }
+  Color get _cardColor =>
+      Theme.of(context).colorScheme.surfaceContainer;
 
-  Color get _primaryTextColor {
-    final colors = Theme.of(context).colorScheme;
+  Color get _primaryTextColor =>
+      Theme.of(context).colorScheme.onSurface;
 
-    return colors.onSurface;
-  }
+  Color get _secondaryTextColor =>
+      Theme.of(context).colorScheme.onSurfaceVariant;
 
-  Color get _secondaryTextColor {
-    final colors = Theme.of(context).colorScheme;
-
-    return colors.onSurfaceVariant;
-  }
-
-  Color get _borderColor {
-    final colors = Theme.of(context).colorScheme;
-
-    return colors.outline.withOpacity(0.15);
-  }
-
-  Color get _primaryColor {
-    final colors = Theme.of(context).colorScheme;
-
-    return colors.primary;
-  }
-
-  bool get _isDark {
-    return Theme.of(context).brightness == Brightness.dark;
-  }
-
-  // ============================================================
-  // CATEGORY STREAM
-  // ============================================================
+  Color get _borderColor =>
+      Theme.of(context).colorScheme.outline.withOpacity(0.15);
 
   Stream<QuerySnapshot<Map<String, dynamic>>> getCategories() {
-    return _firestore.collection('categories').orderBy('createdAt').snapshots();
+    return _firestore
+        .collection('categories')
+        .orderBy('createdAt')
+        .snapshots();
   }
-
-  // ============================================================
-  // FILTER PROPERTIES
-  // ============================================================
-
-  List<Property> filterProperties(List<Property> properties) {
-    return properties.where((property) {
-      // --------------------------------------------------------
-      // CATEGORY
-      // --------------------------------------------------------
-
-      if (_selectedCategoryId != null) {
-        if (property.category != _selectedCategoryId) {
-          return false;
-        }
-      }
-
-      // --------------------------------------------------------
-      // SEARCH
-      // --------------------------------------------------------
-
-      if (_searchText.isEmpty) {
-        return true;
-      }
-
-      final title = property.title.toLowerCase();
-
-      final location = property.location.toLowerCase();
-
-      final price = property.price.toString();
-
-      final category = property.category.toLowerCase();
-
-      return title.contains(_searchText) ||
-          location.contains(_searchText) ||
-          price.contains(_searchText) ||
-          category.contains(_searchText);
-    }).toList();
-  }
-
-  // ============================================================
-  // SELECT CATEGORY
-  // ============================================================
-
-  void _selectCategory(String? categoryId) {
-    setState(() {
-      _selectedCategoryId = categoryId;
-    });
-  }
-
-  // ============================================================
-  // DISPOSE
-  // ============================================================
-
-  @override
-  void dispose() {
-    searchController.dispose();
-
-    super.dispose();
-  }
-
-  // ============================================================
-  // INIT
-  // ============================================================
 
   @override
   void initState() {
     super.initState();
-
     _loadRenterProfile();
   }
 
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
   // ============================================================
-  // LOAD PROFILE
+  // PROFILE
   // ============================================================
 
   Future<void> _loadRenterProfile() async {
     final firebaseUser = FirebaseAuth.instance.currentUser;
 
     if (firebaseUser == null) {
-      if (!mounted) {
-        return;
+      if (mounted) {
+        setState(() => _isLoadingProfile = false);
       }
-
-      setState(() {
-        _isLoadingProfile = false;
-      });
-
       return;
     }
 
     try {
       final user = await _authService.getUserData(firebaseUser.uid);
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _currentUser = user;
-
         _isLoadingProfile = false;
       });
     } catch (e) {
-      debugPrint("Failed to load renter profile: $e");
+      debugPrint('Failed to load renter profile: $e');
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      setState(() {
-        _isLoadingProfile = false;
-      });
+      setState(() => _isLoadingProfile = false);
     }
   }
 
   // ============================================================
-  // BUILD
+  // SEARCH AND FILTER
+  // ============================================================
+
+  List<Property> filterProperties(List<Property> properties) {
+    return properties.where((property) {
+      if (_selectedCategoryId != null &&
+          property.category != _selectedCategoryId) {
+        return false;
+      }
+
+      final price = property.price.toDouble();
+
+      if (_minPrice != null && price < _minPrice!) {
+        return false;
+      }
+
+      if (_maxPrice != null && price > _maxPrice!) {
+        return false;
+      }
+
+      if (_searchText.isEmpty) return true;
+
+      final query = _searchText.toLowerCase();
+
+      return property.title.toLowerCase().contains(query) ||
+          property.location.toLowerCase().contains(query) ||
+          property.price.toString().contains(query) ||
+          property.category.toLowerCase().contains(query);
+    }).toList();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {
+      _searchText = value.trim().toLowerCase();
+      _visibleCount = _pageSize;
+    });
+  }
+
+  void _selectCategory(String? categoryId) {
+    setState(() {
+      _selectedCategoryId = categoryId;
+      _visibleCount = _pageSize;
+    });
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _selectedCategoryId = null;
+      _minPrice = null;
+      _maxPrice = null;
+      _searchText = '';
+      searchController.clear();
+      _visibleCount = _pageSize;
+    });
+  }
+
+  Future<void> _showFilterSheet() async {
+    final minController = TextEditingController(
+      text: _minPrice?.toStringAsFixed(0) ?? '',
+    );
+    final maxController = TextEditingController(
+      text: _maxPrice?.toStringAsFixed(0) ?? '',
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        double? parsePrice(String value) {
+          if (value.trim().isEmpty) return null;
+          return double.tryParse(value.trim());
+        }
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final colors = Theme.of(context).colorScheme;
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(22, 12, 22, 26),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: colors.outline.withOpacity(0.35),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Filter properties',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: colors.onSurface,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Set your monthly rental budget.',
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _priceInput(
+                              controller: minController,
+                              label: 'Minimum price',
+                              colors: colors,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _priceInput(
+                              controller: maxController,
+                              label: 'Maximum price',
+                              colors: colors,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                minController.clear();
+                                maxController.clear();
+                                setSheetState(() {});
+                              },
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 50),
+                                foregroundColor: colors.onSurface,
+                                side: BorderSide(
+                                  color: colors.outline.withOpacity(0.3),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('Reset'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                final min = parsePrice(minController.text);
+                                final max = parsePrice(maxController.text);
+
+                                if ((min != null && min < 0) ||
+                                    (max != null && max < 0)) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Price cannot be negative.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                if (min != null &&
+                                    max != null &&
+                                    min > max) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Minimum price cannot exceed maximum price.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                setState(() {
+                                  _minPrice = min;
+                                  _maxPrice = max;
+                                  _visibleCount = _pageSize;
+                                });
+
+                                Navigator.pop(sheetContext);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: accentColor,
+                                foregroundColor: const Color(0xFF241A05),
+                                minimumSize: const Size(0, 50),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text(
+                                'Apply filters',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    minController.dispose();
+    maxController.dispose();
+  }
+
+  Widget _priceInput({
+    required TextEditingController controller,
+    required String label,
+    required ColorScheme colors,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: TextStyle(color: colors.onSurface),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixText: '\$ ',
+        labelStyle: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
+        filled: true,
+        fillColor: colors.surfaceContainerHighest.withOpacity(0.55),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: colors.outline.withOpacity(0.15),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // MAIN UI
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _backgroundColor,
-
       body: Container(
         width: double.infinity,
-        height: double.infinity,
-
-        decoration: BoxDecoration(gradient: _buildBackgroundGradient()),
-
+        decoration: BoxDecoration(
+          gradient: _buildBackgroundGradient(),
+        ),
         child: SafeArea(
-          child: SingleChildScrollView(
+          child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
-
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                // ==================================================
-                // HEADER
-                // ==================================================
-                _buildHeader(),
-
-                const SizedBox(height: 20),
-
-                // ==================================================
-                // SEARCH
-                // ==================================================
-                _buildSearchBar(),
-
-                const SizedBox(height: 24),
-
-                // ==================================================
-                // CATEGORIES
-                // ==================================================
-                _buildCategories(),
-
-                const SizedBox(height: 28),
-
-                // ==================================================
-                // PROPERTIES
-                // ==================================================
-                StreamBuilder<List<Property>>(
-                  stream: propertyService.getPublishedProperties(),
-
-                  builder: (context, snapshot) {
-                    // ------------------------------------------------
-                    // LOADING
-                    // ------------------------------------------------
-
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return SizedBox(
-                        height: 350,
-
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 22),
+                    _buildSearchBar(),
+                    const SizedBox(height: 24),
+                    _buildCategories(),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+              StreamBuilder<List<Property>>(
+                stream: propertyService.getPublishedProperties(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 280,
                         child: Center(
-                          child: CircularProgressIndicator(color: accentColor),
+                          child: CircularProgressIndicator(
+                            color: accentColor,
+                          ),
                         ),
-                      );
-                    }
+                      ),
+                    );
+                  }
 
-                    if (snapshot.hasError) {
-                      return Padding(
-                        padding: const EdgeInsets.all(20),
+                  if (snapshot.hasError) {
+                    return SliverToBoxAdapter(
+                      child: _buildError(snapshot.error.toString()),
+                    );
+                  }
 
-                        child: Text(
-                          'Failed to load properties\n${snapshot.error}',
+                  final allProperties = snapshot.data ?? [];
 
-                          style: TextStyle(color: _primaryTextColor),
+                  if (allProperties.isEmpty) {
+                    return SliverToBoxAdapter(
+                      child: _buildEmptyProperties(),
+                    );
+                  }
+
+                  final filtered = filterProperties(allProperties);
+                  final visible = filtered.take(_visibleCount).toList();
+                  final hasMore = visible.length < filtered.length;
+
+                  if (filtered.isEmpty) {
+                    return SliverToBoxAdapter(
+                      child: _buildNoResults(),
+                    );
+                  }
+
+                  return SliverMainAxisGroup(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _searchText.isNotEmpty ||
+                                      _selectedCategoryId != null ||
+                                      _minPrice != null ||
+                                      _maxPrice != null
+                                      ? 'Search results'
+                                      : 'Featured properties',
+                                  style: TextStyle(
+                                    color: _primaryTextColor,
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${filtered.length} rooms',
+                                style: TextStyle(
+                                  color: _secondaryTextColor,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      );
-                    }
+                      ),
 
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return _buildEmptyProperties();
-                    }
-
-                    final properties = snapshot.data!;
-
-                    final filteredProperties = filterProperties(properties);
-
-                    if (filteredProperties.isEmpty) {
-                      return _buildNoResults();
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        _buildSectionHeader(
-                          title: 'Featured Houses',
-                          onSeeAll: () {},
+                      // FEATURED HORIZONTAL LIST
+                      if (_searchText.isEmpty &&
+                          _selectedCategoryId == null &&
+                          _minPrice == null &&
+                          _maxPrice == null)
+                        SliverToBoxAdapter(
+                          child: SizedBox(
+                            height: 292,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: visible.length,
+                              separatorBuilder: (_, __) =>
+                              const SizedBox(width: 14),
+                              itemBuilder: (context, index) {
+                                return _FeaturedPropertyCard(
+                                  property: visible[index],
+                                );
+                              },
+                            ),
+                          ),
                         ),
 
-                        const SizedBox(height: 14),
-
-                        _buildFeaturedProperties(filteredProperties),
-
-                        const SizedBox(height: 32),
-
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 28, 20, 14),
                           child: Text(
-                            "Recommended for you",
-
+                            _searchText.isNotEmpty ||
+                                _selectedCategoryId != null ||
+                                _minPrice != null ||
+                                _maxPrice != null
+                                ? 'Available rooms'
+                                : 'Recommended for you',
                             style: TextStyle(
                               color: _primaryTextColor,
                               fontSize: 20,
@@ -373,18 +579,87 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                             ),
                           ),
                         ),
+                      ),
 
-                        const SizedBox(height: 20),
+                      // RECOMMENDED LIST
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _RecommendedPropertyCard(
+                                  property: visible[index],
+                                ),
+                              );
+                            },
+                            childCount: visible.length,
+                          ),
+                        ),
+                      ),
 
-                        _buildRecommendedProperties(filteredProperties),
-                      ],
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 100),
-              ],
-            ),
+                      // LOAD MORE
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                          child: Column(
+                            children: [
+                              if (hasMore)
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: OutlinedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _visibleCount += _pageSize;
+                                      });
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: _primaryTextColor,
+                                      side: BorderSide(
+                                        color: _borderColor,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(15),
+                                      ),
+                                    ),
+                                    child: const Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Load more properties',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Icon(
+                                          Icons.keyboard_arrow_down_rounded,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              else
+                                Text(
+                                  'You have reached the end',
+                                  style: TextStyle(
+                                    color: _secondaryTextColor,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              const SizedBox(height: 90),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
         ),
       ),
@@ -394,24 +669,12 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
   LinearGradient _buildBackgroundGradient() {
     final colors = Theme.of(context).colorScheme;
 
-    if (_isDark) {
-      return const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0xFF000000),
-          Color(0xFF0A0A0A),
-        ],
-      );
-    }
-
     return LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [
-        colors.surface,
-        colors.surfaceContainer,
-      ],
+      colors: _isDark
+          ? const [Color(0xFF101014), Color(0xFF08080A)]
+          : [colors.surface, colors.surfaceContainer],
     );
   }
 
@@ -421,112 +684,127 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       child: Row(
         children: [
-          _buildRenterProfile(),
-
-          const Spacer(),
-
-          Stack(
-            clipBehavior: Clip.none,
-
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: _isDark
-                      ? Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withOpacity(0.7)
-                      : _cardColorHighest,
-
-                  borderRadius: BorderRadius.circular(14),
-
-                  border: Border.all(
-                    color: _isDark
-                        ? Colors.white.withOpacity(0.12)
-                        : _borderColor,
-                  ),
+          Expanded(child: _buildRenterProfile()),
+          const SizedBox(width: 10),
+          _headerIcon(
+            icon: Icons.chat_bubble_outline_rounded,
+            tooltip: 'Messages',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ChatListScreen(),
                 ),
-
-                child: IconButton(
-                  icon: Icon(
-                    Icons.notifications_outlined,
-
-                    color: _isDark ? Colors.white : _primaryTextColor,
-                  ),
-
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => NotificationsScreen()),
-                    );
-                  },
+              );
+            },
+            badge: _buildUnreadMessageBadge(),
+          ),
+          const SizedBox(width: 9),
+          _headerIcon(
+            icon: Icons.notifications_none_rounded,
+            tooltip: 'Notifications',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => NotificationsScreen(),
                 ),
-              ),
-
-              // Notification badge
-              Positioned(right: -2, top: -2, child: _buildNotificationBadge()),
-            ],
+              );
+            },
+            badge: _buildNotificationBadge(),
           ),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // NOTIFICATION BADGE
-  // ============================================================
+  Widget _headerIcon({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+    Widget? badge,
+  }) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: _borderColor),
+          ),
+          child: IconButton(
+            onPressed: onPressed,
+            tooltip: tooltip,
+            icon: Icon(icon, color: _primaryTextColor, size: 22),
+          ),
+        ),
+        if (badge != null)
+          Positioned(
+            right: -3,
+            top: -3,
+            child: badge,
+          ),
+      ],
+    );
+  }
 
-  Widget _buildNotificationBadge() {
-    final firebaseUser = FirebaseAuth.instance.currentUser;
+  Widget _buildUnreadMessageBadge() {
+    final user = FirebaseAuth.instance.currentUser;
 
-    if (firebaseUser == null) {
-      return const SizedBox.shrink();
-    }
+    if (user == null) return const SizedBox.shrink();
 
     return StreamBuilder<int>(
-      stream: NotificationService().getUnreadCount(firebaseUser.uid),
-
+      stream: ChatService().getRenterUnreadMessageCount(user.uid),
       builder: (context, snapshot) {
         final count = snapshot.data ?? 0;
+        if (count <= 0) return const SizedBox.shrink();
 
-        if (count <= 0) {
-          return const SizedBox.shrink();
-        }
-
-        return Container(
-          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-
-          decoration: BoxDecoration(
-            color: Colors.red,
-
-            borderRadius: BorderRadius.circular(10),
-
-            border: Border.all(
-              color: _isDark ? Colors.white : _backgroundColor,
-
-              width: 2,
-            ),
-          ),
-
-          child: Center(
-            child: Text(
-              count > 99 ? "99+" : "$count",
-
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        );
+        return _countBadge(count);
       },
+    );
+  }
+
+  Widget _buildNotificationBadge() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return const SizedBox.shrink();
+
+    return StreamBuilder<int>(
+      stream: NotificationService().getUnreadCount(user.uid),
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 0;
+        if (count <= 0) return const SizedBox.shrink();
+
+        return _countBadge(count);
+      },
+    );
+  }
+
+  Widget _countBadge(int count) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 19, minHeight: 19),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF4444),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _backgroundColor,
+          width: 1.5,
+        ),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 
@@ -535,218 +813,96 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
   // ============================================================
 
   Widget _buildRenterProfile() {
-    // ===========================================================
-    // LOADING PROFILE
-    // ===========================================================
-
     if (_isLoadingProfile) {
       return Row(
         children: [
-          Container(
-            width: 46,
-            height: 46,
-
-            decoration: BoxDecoration(
-              color: _isDark
-                  ? Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
-                  .withOpacity(0.7)
-                  : _cardColorHighest,
-
-              shape: BoxShape.circle,
-            ),
-
+          const SizedBox(
+            width: 44,
+            height: 44,
             child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: accentColor,
-                ),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: accentColor,
               ),
             ),
           ),
-
           const SizedBox(width: 10),
-
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-
-            children: [
-              Container(
-                width: 70,
-                height: 9,
-
-                decoration: BoxDecoration(
-                  color: _isDark
-                      ? Colors.white.withOpacity(0.12)
-                      : _cardColorHighest,
-
-                  borderRadius: BorderRadius.circular(5),
-                ),
-              ),
-
-              const SizedBox(height: 7),
-
-              Container(
-                width: 110,
-                height: 14,
-
-                decoration: BoxDecoration(
-                  color: _isDark
-                      ? Colors.white.withOpacity(0.12)
-                      : _cardColorHighest,
-
-                  borderRadius: BorderRadius.circular(5),
-                ),
-              ),
-            ],
+          Container(
+            width: 115,
+            height: 12,
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
         ],
       );
     }
 
-    // ===========================================================
-    // USER DATA
-    // ===========================================================
-
     final user = _currentUser;
-
-    final String name = user?.fullName.trim().isNotEmpty == true
+    final name = user?.fullName.trim().isNotEmpty == true
         ? user!.fullName.trim()
-        : "Renter";
-
-    final String imageUrl = user?.profileImage?.trim() ?? "";
-
-    // ===========================================================
-    // PROFILE UI
-    // ===========================================================
+        : 'Renter';
+    final imageUrl = user?.profileImage?.trim() ?? '';
 
     return Row(
       children: [
-        // =======================================================
-        // PROFILE IMAGE
-        // =======================================================
         Container(
           width: 46,
           height: 46,
-
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-
-            border: Border.all(
-              color: _isDark ? Colors.white.withOpacity(0.20) : _borderColor,
-
-              width: 1.5,
-            ),
+            border: Border.all(color: _borderColor, width: 1.5),
           ),
-
           child: ClipOval(
             child: imageUrl.isNotEmpty
                 ? Image.network(
-                    imageUrl,
-
-                    width: 46,
-                    height: 46,
-
-                    fit: BoxFit.cover,
-
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) {
-                        return child;
-                      }
-
-                      return Container(
-                        color: _isDark
-                            ? Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest
-                            .withOpacity(0.7)
-                            : _cardColorHighest,
-
-                        child: Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: accentColor,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-
-                    errorBuilder: (context, error, stackTrace) {
-                      return _buildDefaultProfileIcon();
-                    },
-                  )
-                : _buildDefaultProfileIcon(),
+              imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _defaultProfileIcon(),
+            )
+                : _defaultProfileIcon(),
           ),
         ),
-
         const SizedBox(width: 10),
-
-        // =======================================================
-        // USER NAME
-        // =======================================================
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-
-          children: [
-            Text(
-              "WELCOME BACK",
-
-              style: TextStyle(
-                color: _secondaryTextColor,
-                fontSize: 9,
-                letterSpacing: 1,
-                fontWeight: FontWeight.w500,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'WELCOME BACK',
+                style: TextStyle(
+                  color: _secondaryTextColor,
+                  fontSize: 9,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-
-            const SizedBox(height: 2),
-
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 180),
-
-              child: Text(
+              const SizedBox(height: 4),
+              Text(
                 name,
-
                 maxLines: 1,
-
                 overflow: TextOverflow.ellipsis,
-
                 style: TextStyle(
                   color: _primaryTextColor,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
   }
 
-  // ============================================================
-  // DEFAULT PROFILE ICON
-  // ============================================================
-
-  Widget _buildDefaultProfileIcon() {
+  Widget _defaultProfileIcon() {
     return Container(
-      color: _isDark ? Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest
-          .withOpacity(0.7) : _cardColorHighest,
-
-      child: Center(
-        child: Icon(Icons.person_rounded, color: _secondaryTextColor, size: 25),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Icon(
+        Icons.person_rounded,
+        size: 25,
+        color: _secondaryTextColor,
       ),
     );
   }
@@ -756,106 +912,96 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
   // ============================================================
 
   Widget _buildSearchBar() {
+    final hasFilters = _selectedCategoryId != null ||
+        _minPrice != null ||
+        _maxPrice != null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-
       child: Row(
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-
-                child: Container(
-                  height: 54,
-
-                  decoration: BoxDecoration(
-                    color: _isDark
-                        ? Colors.white.withOpacity(0.12)
-                        : _cardColorHighest,
-
-                    borderRadius: BorderRadius.circular(16),
-
-                    border: Border.all(
-                      color: _isDark
-                          ? Colors.white.withOpacity(0.18)
-                          : _borderColor,
-                    ),
+            child: Container(
+              height: 54,
+              decoration: BoxDecoration(
+                color: _cardColor,
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(color: _borderColor),
+              ),
+              child: TextField(
+                controller: searchController,
+                onChanged: _onSearchChanged,
+                style: TextStyle(
+                  color: _primaryTextColor,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Search rooms or location',
+                  hintStyle: TextStyle(
+                    color: _secondaryTextColor,
+                    fontSize: 13,
                   ),
-
-                  child: TextField(
-                    controller: searchController,
-
-                    onChanged: (value) {
-                      setState(() {
-                        _searchText = value.trim().toLowerCase();
-                      });
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: _secondaryTextColor,
+                  ),
+                  suffixIcon: _searchText.isNotEmpty
+                      ? IconButton(
+                    onPressed: () {
+                      searchController.clear();
+                      _onSearchChanged('');
                     },
-
-                    style: TextStyle(color: _primaryTextColor, fontSize: 15),
-
-                    decoration: InputDecoration(
-                      hintText: 'Search room, location or price...',
-
-                      hintStyle: TextStyle(
-                        color: _secondaryTextColor,
-                        fontSize: 15,
-                      ),
-
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-
-                        color: _secondaryTextColor,
-                      ),
-
-                      border: InputBorder.none,
-
-                      contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: _secondaryTextColor,
+                      size: 19,
                     ),
-                  ),
+                  )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
             ),
           ),
-
-          const SizedBox(width: 12),
-
-          // Filter button
-          Container(
-            height: 54,
-            width: 54,
-
-            decoration: BoxDecoration(
-              color: _isDark ? const Color(0xFF2D1B69) : _cardColorHighest,
-
-              borderRadius: BorderRadius.circular(16),
-
-              border: Border.all(
-                color: _isDark ? Colors.white.withOpacity(0.12) : _borderColor,
-              ),
-
-              boxShadow: [
-                BoxShadow(
-                  color: _isDark
-                      ? Colors.black.withOpacity(0.25)
-                      : Colors.black.withOpacity(0.06),
-
-                  blurRadius: 12,
-
-                  offset: const Offset(0, 4),
+          const SizedBox(width: 10),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Material(
+                color: hasFilters
+                    ? accentColor
+                    : _cardColor,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _showFilterSheet,
+                  child: SizedBox(
+                    width: 54,
+                    height: 54,
+                    child: Icon(
+                      Icons.tune_rounded,
+                      color: hasFilters
+                          ? const Color(0xFF241A05)
+                          : _primaryTextColor,
+                    ),
+                  ),
                 ),
-              ],
-            ),
-
-            child: Icon(
-              Icons.tune_rounded,
-
-              color: _isDark ? Colors.white : _primaryColor,
-
-              size: 24,
-            ),
+              ),
+              if (hasFilters)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF16A34A),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -867,134 +1013,131 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
   // ============================================================
 
   Widget _buildCategories() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: getCategories(),
-
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SizedBox(
-            height: 42,
-
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: accentColor,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Categories',
+                  style: TextStyle(
+                    color: _primaryTextColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return SizedBox(
-            height: 42,
-
-            child: Center(
-              child: Text(
-                'Failed to load categories',
-
-                style: TextStyle(color: _secondaryTextColor),
-              ),
-            ),
-          );
-        }
-
-        final categories = snapshot.data?.docs ?? [];
-
-        return SizedBox(
-          height: 42,
-
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-
-            physics: const BouncingScrollPhysics(),
-
-            itemCount: categories.length + 1,
-
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-
-            itemBuilder: (context, index) {
-              // ------------------------------------------------
-              // ALL
-              // ------------------------------------------------
-
-              if (index == 0) {
-                return _CategoryChip(
-                  label: 'All',
-
-                  isSelected: _selectedCategoryId == null,
-
-                  onTap: () {
-                    _selectCategory(null);
-                  },
-                );
-              }
-
-              // ------------------------------------------------
-              // FIRESTORE CATEGORY
-              // ------------------------------------------------
-
-              final doc = categories[index - 1];
-
-              final data = doc.data();
-
-              final categoryName = data['name']?.toString() ?? 'Unknown';
-
-              return _CategoryChip(
-                label: categoryName,
-
-                isSelected: _selectedCategoryId == doc.id,
-
-                onTap: () {
-                  _selectCategory(doc.id);
-                },
-              );
-            },
+              if (_selectedCategoryId != null ||
+                  _minPrice != null ||
+                  _maxPrice != null)
+                TextButton(
+                  onPressed: _clearFilters,
+                  child: const Text(
+                    'Clear all',
+                    style: TextStyle(color: accentColor),
+                  ),
+                ),
+            ],
           ),
-        );
-      },
+        ),
+        const SizedBox(height: 12),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: getCategories(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Unable to load categories.',
+                  style: TextStyle(color: _secondaryTextColor),
+                ),
+              );
+            }
+
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 42,
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: accentColor,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            final categories = snapshot.data?.docs ?? [];
+
+            return SizedBox(
+              height: 42,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                physics: const BouncingScrollPhysics(),
+                itemCount: categories.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 9),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return _CategoryChip(
+                      label: 'All',
+                      isSelected: _selectedCategoryId == null,
+                      onTap: () => _selectCategory(null),
+                    );
+                  }
+
+                  final doc = categories[index - 1];
+                  final name = doc.data()['name']?.toString() ?? 'Unknown';
+
+                  return _CategoryChip(
+                    label: name,
+                    isSelected: _selectedCategoryId == doc.id,
+                    onTap: () => _selectCategory(doc.id),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
   // ============================================================
-  // SECTION HEADER
+  // STATES
   // ============================================================
 
-  Widget _buildSectionHeader({
-    required String title,
-    required VoidCallback onSeeAll,
-  }) {
+  Widget _buildError(String error) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
+      padding: const EdgeInsets.all(24),
+      child: Column(
         children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 45,
+            color: Colors.redAccent,
+          ),
+          const SizedBox(height: 12),
           Text(
-            title,
-
+            'Unable to load properties',
             style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
               color: _primaryTextColor,
+              fontWeight: FontWeight.bold,
             ),
           ),
-
-          TextButton(
-            onPressed: onSeeAll,
-
-            style: TextButton.styleFrom(
-              foregroundColor: accentColor,
-
-              padding: EdgeInsets.zero,
-            ),
-
-            child: const Text(
-              'See all',
-
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          const SizedBox(height: 6),
+          Text(
+            error,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _secondaryTextColor,
+              fontSize: 12,
             ),
           ),
         ],
@@ -1002,101 +1145,71 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
     );
   }
 
-  // ============================================================
-  // FEATURED PROPERTIES
-  // ============================================================
-
-  Widget _buildFeaturedProperties(List<Property> properties) {
-    return SizedBox(
-      height: 300,
-
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-
-        physics: const BouncingScrollPhysics(),
-
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-
-        itemCount: properties.length,
-
-        itemBuilder: (context, index) {
-          final property = properties[index];
-
-          return Padding(
-            padding: const EdgeInsets.only(right: 16),
-
-            child: _FeaturedPropertyCard(property: property),
-          );
-        },
-      ),
-    );
-  }
-
-  // ============================================================
-  // RECOMMENDED PROPERTIES
-  // ============================================================
-
-  Widget _buildRecommendedProperties(List<Property> properties) {
-    return Column(
-      children: properties.map((property) {
-        return _RecommendedPropertyCard(property: property);
-      }).toList(),
-    );
-  }
-
-  // ============================================================
-  // EMPTY
-  // ============================================================
-
   Widget _buildEmptyProperties() {
     return Padding(
-      padding: const EdgeInsets.all(20),
-
-      child: Text(
-        'No rooms available',
-
-        style: TextStyle(color: _primaryTextColor),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.home_work_outlined,
+              size: 55,
+              color: _secondaryTextColor,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'No rooms available',
+              style: TextStyle(
+                color: _primaryTextColor,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'New properties will appear here when available.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _secondaryTextColor),
+            ),
+          ],
+        ),
       ),
     );
   }
-
-  // ============================================================
-  // NO FILTER RESULTS
-  // ============================================================
 
   Widget _buildNoResults() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
       child: Center(
         child: Column(
           children: [
             Icon(
               Icons.search_off_rounded,
-
-              size: 50,
-
+              size: 54,
               color: _secondaryTextColor,
             ),
-
-            const SizedBox(height: 12),
-
+            const SizedBox(height: 14),
             Text(
               'No rooms found',
-
               style: TextStyle(
                 color: _primaryTextColor,
-                fontSize: 17,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 6),
-
             Text(
-              'Try another category or search.',
-
-              style: TextStyle(color: _secondaryTextColor, fontSize: 13),
+              'Try another search or adjust your filters.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _secondaryTextColor),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: _clearFilters,
+              child: const Text(
+                'Clear search and filters',
+                style: TextStyle(color: accentColor),
+              ),
             ),
           ],
         ),
@@ -1111,61 +1224,53 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
 
 class _CategoryChip extends StatelessWidget {
   final String label;
-
   final bool isSelected;
-
   final VoidCallback onTap;
 
   const _CategoryChip({
     required this.label,
+    required this.isSelected,
     required this.onTap,
-    this.isSelected = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // bool get
 
-    return GestureDetector(
-      onTap: onTap,
-
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-
-        curve: Curves.easeOut,
-
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-
-        decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFFFBBF24)
-              : isDark
-              ? Colors.white.withOpacity(0.12)
-              : colors.surfaceContainerHighest,
-
-          borderRadius: BorderRadius.circular(30),
-
-          border: Border.all(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(25),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 10,
+          ),
+          decoration: BoxDecoration(
             color: isSelected
                 ? const Color(0xFFFBBF24)
                 : isDark
-                ? Colors.white.withOpacity(0.18)
-                : colors.outline.withOpacity(0.15),
+                ? Colors.white.withOpacity(0.07)
+                : colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFFFBBF24)
+                  : colors.outline.withOpacity(0.14),
+            ),
           ),
-        ),
-
-        child: Text(
-          label,
-
-          style: TextStyle(
-            color: isSelected ? const Color(0xFF1A1035) : colors.onSurface,
-
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-
-            fontSize: 13.5,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected
+                  ? const Color(0xFF241A05)
+                  : colors.onSurface,
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            ),
           ),
         ),
       ),
@@ -1174,7 +1279,7 @@ class _CategoryChip extends StatelessWidget {
 }
 
 // ============================================================
-// FEATURED PROPERTY CARD
+// FEATURED PROPERTY CARD — NO RATING
 // ============================================================
 
 class _FeaturedPropertyCard extends StatelessWidget {
@@ -1185,19 +1290,7 @@ class _FeaturedPropertyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final cardColor = isDark
-        ? Theme.of(context)
-        .colorScheme
-        .surfaceContainerHighest
-        .withOpacity(0.7)
-        : colors.surfaceContainer;
-
-    final borderColor = isDark
-        ? Colors.white.withOpacity(0.15)
-        : colors.outline.withOpacity(0.12);
 
     return GestureDetector(
       onTap: () {
@@ -1208,192 +1301,124 @@ class _FeaturedPropertyCard extends StatelessWidget {
           ),
         );
       },
-
       child: Container(
-        width: 270,
-
+        width: 265,
         decoration: BoxDecoration(
+          color: isDark
+              ? colors.surfaceContainerHighest.withOpacity(0.65)
+              : colors.surface,
           borderRadius: BorderRadius.circular(22),
-
-          color: cardColor,
-
-          border: Border.all(color: borderColor),
-
+          border: Border.all(
+            color: colors.outline.withOpacity(0.13),
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.25 : 0.06),
-
-              blurRadius: 20,
-
-              offset: const Offset(0, 8),
+              color: Colors.black.withOpacity(isDark ? 0.18 : 0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 5),
             ),
           ],
         ),
-
+        clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-
           children: [
-            // ==================================================
-            // IMAGE
-            // ==================================================
             Stack(
               children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(22),
-                  ),
-
-                  child: Image.network(
-                    property.imageUrl,
-
-                    height: 170,
-
-                    width: double.infinity,
-
-                    fit: BoxFit.cover,
-
-                    errorBuilder: (_, __, ___) {
-                      return Container(
-                        height: 170,
-
-                        color: isDark
-                            ? Colors.white12
-                            : colors.surfaceContainerHighest,
-
-                        child: Center(
-                          child: Icon(
-                            Icons.image_not_supported,
-
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                _propertyImage(
+                  property.imageUrl,
+                  height: 158,
+                  width: double.infinity,
+                  context: context,
                 ),
-
-                // ==================================================
-                // RATING
-                // ==================================================
                 Positioned(
+                  left: 12,
                   top: 12,
-                  right: 12,
-
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 6,
                     ),
-
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
-
-                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.black.withOpacity(0.62),
+                      borderRadius: BorderRadius.circular(9),
                     ),
-
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.star_rounded,
-
-                          color: Color(0xFFFBBF24),
-
-                          size: 16,
-                        ),
-
-                        const SizedBox(width: 4),
-
-                        Text(
-                          '4.8',
-
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-
-                            fontWeight: FontWeight.bold,
-
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+                    child: const Text(
+                      'AVAILABLE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        letterSpacing: 0.7,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-
-            // ==================================================
-            // INFORMATION
-            // ==================================================
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-                  Text(
-                    property.title,
-
-                    maxLines: 1,
-
-                    overflow: TextOverflow.ellipsis,
-
-                    style: TextStyle(
-                      fontSize: 16,
-
-                      fontWeight: FontWeight.bold,
-
-                      color: colors.onSurface,
-                    ),
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.location_on_outlined,
-
-                        size: 14,
-
-                        color: colors.onSurfaceVariant,
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      property.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.onSurface,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
                       ),
-
-                      const SizedBox(width: 3),
-
-                      Expanded(
-                        child: Text(
-                          property.location,
-
-                          maxLines: 1,
-
-                          overflow: TextOverflow.ellipsis,
-
-                          style: TextStyle(
-                            color: colors.onSurfaceVariant,
-
-                            fontSize: 13,
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.location_on_outlined,
+                          size: 14,
+                          color: colors.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            property.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  Text(
-                    '\$${property.price} /mo',
-
-                    style: const TextStyle(
-                      fontSize: 18,
-
-                      fontWeight: FontWeight.bold,
-
-                      color: Color(0xFFFBBF24),
+                      ],
                     ),
-                  ),
-                ],
+                    const Spacer(),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '\$${property.price}/mo',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFFF0AD16),
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 19,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -1404,7 +1429,7 @@ class _FeaturedPropertyCard extends StatelessWidget {
 }
 
 // ============================================================
-// RECOMMENDED PROPERTY CARD
+// RECOMMENDED PROPERTY CARD — NO RATING
 // ============================================================
 
 class _RecommendedPropertyCard extends StatelessWidget {
@@ -1415,205 +1440,212 @@ class _RecommendedPropertyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => PropertyDetailScreen(property: property),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(19),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PropertyDetailScreen(property: property),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.all(11),
+          decoration: BoxDecoration(
+            color: isDark
+                ? colors.surfaceContainerHighest.withOpacity(0.55)
+                : colors.surface,
+            borderRadius: BorderRadius.circular(19),
+            border: Border.all(
+              color: colors.outline.withOpacity(0.13),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.12 : 0.025),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-        );
-      },
-
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-
-            child: Container(
-              padding: const EdgeInsets.all(12),
-
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withOpacity(0.7)
-                    : colors.surfaceContainer,
-
-                borderRadius: BorderRadius.circular(18),
-
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.15)
-                      : colors.outline.withOpacity(0.12),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: _propertyImage(
+                  property.imageUrl,
+                  width: 108,
+                  height: 112,
+                  context: context,
                 ),
               ),
-
-              child: Row(
-                children: [
-                  // ==================================================
-                  // IMAGE
-                  // ==================================================
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-
-                    child: Image.network(
-                      property.imageUrl,
-
-                      width: 110,
-
-                      height: 90,
-
-                      fit: BoxFit.cover,
-
-                      errorBuilder: (_, __, ___) {
-                        return Container(
-                          width: 110,
-
-                          height: 90,
-
-                          color: isDark
-                              ? Colors.white12
-                              : colors.surfaceContainerHighest,
-
-                          child: Icon(
-                            Icons.image_not_supported,
-
+              const SizedBox(width: 13),
+              Expanded(
+                child: SizedBox(
+                  height: 112,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        property.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 13,
                             color: colors.onSurfaceVariant,
                           ),
-                        );
-                      },
-                    ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              property.location,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 5,
+                        children: [
+                          _miniInfo(
+                            context,
+                            Icons.bed_outlined,
+                            '${property.bedrooms} beds',
+                          ),
+                          _miniInfo(
+                            context,
+                            Icons.bathtub_outlined,
+                            '${property.bathrooms.toInt()} baths',
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Text(
+                        '\$${property.price.toInt()} / month',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFF0AD16),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-
-                  const SizedBox(width: 14),
-
-                  // ==================================================
-                  // INFORMATION
-                  // ==================================================
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Text(
-                          property.title,
-
-                          maxLines: 1,
-
-                          overflow: TextOverflow.ellipsis,
-
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-
-                            fontSize: 15.5,
-
-                            color: colors.onSurface,
-                          ),
-                        ),
-
-                        const SizedBox(height: 4),
-
-                        Text(
-                          property.location,
-
-                          maxLines: 1,
-
-                          overflow: TextOverflow.ellipsis,
-
-                          style: TextStyle(
-                            color: colors.onSurfaceVariant,
-
-                            fontSize: 12.5,
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        Row(
-                          children: [
-                            _miniInfo(
-                              context,
-
-                              Icons.bed_rounded,
-
-                              '${property.bedrooms}',
-                            ),
-
-                            const SizedBox(width: 12),
-
-                            _miniInfo(
-                              context,
-
-                              Icons.bathtub_outlined,
-
-                              '${property.bathrooms.toInt()}',
-                            ),
-
-                            const SizedBox(width: 12),
-
-                            _miniInfo(
-                              context,
-
-                              Icons.home_work_outlined,
-
-                              '${property.amenities.length}',
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        Text(
-                          '\$${property.price.toInt()} /mo',
-
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-
-                            fontSize: 16,
-
-                            color: Color(0xFFFBBF24),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: colors.onSurfaceVariant,
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // ============================================================
-  // MINI INFO
-  // ============================================================
-
   Widget _miniInfo(BuildContext context, IconData icon, String text) {
     final colors = Theme.of(context).colorScheme;
 
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: colors.onSurfaceVariant),
-
+        Icon(icon, size: 13, color: colors.onSurfaceVariant),
         const SizedBox(width: 3),
-
         Text(
           text,
-
-          style: TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant),
+          style: TextStyle(
+            color: colors.onSurfaceVariant,
+            fontSize: 11,
+          ),
         ),
       ],
     );
   }
+}
+
+// ============================================================
+// PROPERTY IMAGE
+// ============================================================
+
+Widget _propertyImage(
+    String imageUrl, {
+      required double width,
+      required double height,
+      required BuildContext context,
+    }) {
+  final colors = Theme.of(context).colorScheme;
+
+  if (imageUrl.trim().isEmpty) {
+    return Container(
+      width: width,
+      height: height,
+      color: colors.surfaceContainerHighest,
+      child: Icon(
+        Icons.home_work_outlined,
+        color: colors.onSurfaceVariant,
+        size: 32,
+      ),
+    );
+  }
+
+  return Image.network(
+    imageUrl,
+    width: width,
+    height: height,
+    fit: BoxFit.cover,
+    loadingBuilder: (context, child, progress) {
+      if (progress == null) return child;
+
+      return Container(
+        width: width,
+        height: height,
+        color: colors.surfaceContainerHighest,
+        child: const Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Color(0xFFFBBF24),
+            ),
+          ),
+        ),
+      );
+    },
+    errorBuilder: (_, __, ___) {
+      return Container(
+        width: width,
+        height: height,
+        color: colors.surfaceContainerHighest,
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: colors.onSurfaceVariant,
+          size: 30,
+        ),
+      );
+    },
+  );
 }

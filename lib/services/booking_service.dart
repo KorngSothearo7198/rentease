@@ -266,4 +266,27 @@ class BookingService {
       return null;
     }
   }
+
+
+
+  Stream<int> getOwnerPendingBookingCount(String ownerId) {
+    return _firestore
+        .collection('bookings')
+        .where('ownerId', isEqualTo: ownerId)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.where((doc) {
+        final data = doc.data();
+
+        final bookingStatus =
+            data['status']?.toString().trim().toLowerCase() ?? '';
+
+        return bookingStatus == 'pending';
+      }).length;
+    });
+  }
+
+
+
+
 }

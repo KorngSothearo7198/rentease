@@ -4,6 +4,7 @@ import 'package:rentease/features/owner/screens/owner_home_screen.dart'; // adju
 import '../../../models/user_model.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/session_service.dart';
+import '../forgot/forgot_password_screen.dart';
 // import '../services/auth_service.dart';
 
 class OwnerLoginScreen extends StatefulWidget {
@@ -176,12 +177,19 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                       children: [
                         const Text('Password', style: _labelStyle),
                         GestureDetector(
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ForgotPasswordScreen(),
+                              ),
+                            );
+                          },
                           child: const Text(
                             'Forgot Password?',
                             style: TextStyle(
                               color: Color(0xFF6B46C1),
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),

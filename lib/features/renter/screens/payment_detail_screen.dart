@@ -601,24 +601,14 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
           const SizedBox(height: 22),
 
           Text(
-            "\$${widget.payment.amount.toStringAsFixed(2)}",
-
+            widget.payment.bookingCurrency == ""
+                ? "\$${widget.payment.bookingAmount.toStringAsFixed(2)}"
+                : "${widget.payment.bookingAmount.toStringAsFixed(2)} "
+                      "${widget.payment.bookingCurrency}",
             style: const TextStyle(
               fontSize: 34,
               fontWeight: FontWeight.w800,
               color: _primary,
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          Text(
-            "USD",
-
-            style: TextStyle(
-              fontSize: 13,
-              color: _textSecondaryColor(context),
-              fontWeight: FontWeight.w600,
             ),
           ),
 
@@ -766,18 +756,26 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   // ==============================================================
 
   Widget _buildTransactionSection() {
+    final bookingAmount = widget.payment.bookingAmount;
+    final bookingCurrency = widget.payment.bookingCurrency;
+
+    final actualAmount = widget.payment.amount;
+    final actualCurrency = widget.payment.currency;
+
+    final bookingAmountText = bookingCurrency == "USD"
+        ? "\$${bookingAmount.toStringAsFixed(2)}"
+        : "${bookingAmount.toStringAsFixed(2)} $bookingCurrency";
+
+    final actualAmountText =
+        "${actualAmount.toStringAsFixed(2)} $actualCurrency";
+
     return Container(
       width: double.infinity,
-
       margin: const EdgeInsets.only(bottom: 12),
-
       padding: const EdgeInsets.all(20),
-
       decoration: BoxDecoration(
         color: _cardColor(context),
-
         borderRadius: BorderRadius.circular(20),
-
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(_isDark(context) ? 0.25 : 0.04),
@@ -786,7 +784,6 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
           ),
         ],
       ),
-
       child: Column(
         children: [
           _infoRow(
@@ -801,6 +798,15 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
             "BOOKING REFERENCE",
             _bookingReference(widget.payment.bookingId),
             icon: Icons.bookmark_border_rounded,
+          ),
+
+          Divider(height: 24, color: _borderColor(context)),
+
+          _infoRow(
+            "BOOKING AMOUNT",
+            bookingAmountText,
+            icon: Icons.home_work_outlined,
+            valueColor: _primary,
           ),
 
           Divider(height: 24, color: _borderColor(context)),
@@ -1101,16 +1107,25 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   // ==============================================================
 
   Widget _buildBillingSummary() {
+    final bookingAmount = widget.payment.bookingAmount;
+    final bookingCurrency = widget.payment.bookingCurrency;
+
+    final actualPaidAmount = widget.payment.amount;
+    final actualPaidCurrency = widget.payment.currency;
+
+    final bookingAmountText = bookingCurrency == "USD"
+        ? "\$${bookingAmount.toStringAsFixed(2)}"
+        : "${bookingAmount.toStringAsFixed(2)} $bookingCurrency";
+
+    final actualPaidText =
+        "${actualPaidAmount.toStringAsFixed(2)} $actualPaidCurrency";
+
     return Container(
       width: double.infinity,
-
       padding: const EdgeInsets.all(20),
-
       decoration: BoxDecoration(
         color: _cardColor(context),
-
         borderRadius: BorderRadius.circular(20),
-
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(_isDark(context) ? 0.25 : 0.04),
@@ -1119,14 +1134,16 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
           ),
         ],
       ),
-
       child: Column(
         children: [
-          _billingRow(
-            "Rental Payment",
-            "\$${widget.payment.amount.toStringAsFixed(2)}",
-          ),
+          _billingRow("Rental Payment", bookingAmountText),
 
+          const SizedBox(height: 8),
+
+          // _billingRow(
+          //   "Payment Transaction",
+          //   actualPaidText,
+          // ),
           const SizedBox(height: 8),
 
           Divider(color: _borderColor(context)),
@@ -1135,11 +1152,9 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
 
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
             children: [
               Text(
                 "Total Paid",
-
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -1159,8 +1174,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
                   if (_isPaid) const SizedBox(width: 6),
 
                   Text(
-                    "\$${widget.payment.amount.toStringAsFixed(2)}",
-
+                    bookingAmountText,
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,

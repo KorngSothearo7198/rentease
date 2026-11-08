@@ -404,9 +404,16 @@ class _RequestBookingScreenState extends State<RequestBookingScreen> {
       // CREATE CHAT CONVERSATION
       // ============================================================
 
+      // final conversationId = chatService.createConversationId(
+      //   user.uid,
+      //   property.ownerId,
+      //   houseId,
+      // );
+
       final conversationId = chatService.createConversationId(
         user.uid,
         property.ownerId,
+        property.id,
       );
 
       await chatService.createConversation(

@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/owner_notification_model.dart';
+import '../../../services/booking_service.dart';
 import '../../../services/owner_notification_service.dart';
+import 'owner_booking_detail.dart';
 
 class OwnerNotificationsScreen extends StatefulWidget {
   const OwnerNotificationsScreen({super.key});
@@ -13,18 +15,20 @@ class OwnerNotificationsScreen extends StatefulWidget {
       _OwnerNotificationsScreenState();
 }
 
-class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
-    with SingleTickerProviderStateMixin {
+class _OwnerNotificationsScreenState
+    extends State<OwnerNotificationsScreen> {
   final OwnerNotificationService _notificationService =
   OwnerNotificationService();
+
+  final BookingService _bookingService = BookingService();
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  String? get _userId => _auth.currentUser?.uid;
+  bool _openingNotification = false;
 
   @override
   Widget build(BuildContext context) {
-    final user = _auth.currentUser;
-    final userId = user?.uid;
+    final userId = _auth.currentUser?.uid;
 
     if (userId == null || userId.isEmpty) {
       return const Scaffold(
@@ -38,7 +42,6 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        centerTitle: false,
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
           icon: const Icon(
@@ -61,45 +64,41 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
             stream: _notificationService.userNotifications(userId),
             builder: (context, snapshot) {
               final notifications = snapshot.data ?? [];
-              final hasUnread =
-              notifications.any((n) => !n.isRead);
+              final hasUnread = notifications.any((n) => !n.isRead);
 
-              if (!hasUnread) return const SizedBox(width: 16);
+              if (!hasUnread) {
+                return const SizedBox(width: 16);
+              }
 
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: TextButton(
-                  onPressed: () async {
-                    try {
-                      await _notificationService.markAllAsRead(userId);
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('All notifications marked as read.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    } catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Unable to mark as read: $e'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    }
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF4F46E5),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  child: const Text(
-                    'Read all',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+              return TextButton(
+                onPressed: () async {
+                  try {
+                    await _notificationService.markAllAsRead(userId);
+
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('All notifications marked as read.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Unable to mark as read: $e'),
+                      ),
+                    );
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF4F46E5),
+                ),
+                child: const Text(
+                  'Read all',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               );
             },
@@ -115,7 +114,9 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
 
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF4F46E5)),
+              child: CircularProgressIndicator(
+                color: Color(0xFF4F46E5),
+              ),
             );
           }
 
@@ -123,10 +124,11 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
 
           if (notifications.isEmpty) {
             return RefreshIndicator(
-              color: const Color(0xFF4F46E5),
               onRefresh: () async {
                 setState(() {});
-                await Future.delayed(const Duration(milliseconds: 300));
+                await Future.delayed(
+                  const Duration(milliseconds: 300),
+                );
               },
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -147,7 +149,9 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
             color: const Color(0xFF4F46E5),
             onRefresh: () async {
               setState(() {});
-              await Future.delayed(const Duration(milliseconds: 300));
+              await Future.delayed(
+                const Duration(milliseconds: 300),
+              );
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -172,7 +176,6 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
     );
   }
 
-  // ─── Section Title ───────────────────────────────────────────────
   Widget _buildSectionTitle(String title, int count) {
     return Padding(
       padding: const EdgeInsets.only(left: 2, bottom: 2),
@@ -184,12 +187,14 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
               color: Color(0xFF0F172A),
               fontSize: 15,
               fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
             ),
           ),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 3,
+            ),
             decoration: BoxDecoration(
               color: const Color(0xFFEEF2FF),
               borderRadius: BorderRadius.circular(20),
@@ -208,10 +213,11 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
     );
   }
 
-  // ─── Notification Card ───────────────────────────────────────────
-  Widget _buildNotificationCard(OwnerNotificationModel notification) {
-    final iconData = _getNotificationIcon(notification.type);
+  Widget _buildNotificationCard(
+      OwnerNotificationModel notification,
+      ) {
     final isUnread = !notification.isRead;
+    final icon = _getNotificationIcon(notification.type);
 
     return Dismissible(
       key: ValueKey(notification.notificationId),
@@ -238,29 +244,25 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
           );
         } catch (e) {
           if (!mounted) return;
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Unable to delete: $e'),
+              content: Text('Unable to delete notification: $e'),
               behavior: SnackBarBehavior.floating,
             ),
           );
         }
       },
-      child: GestureDetector(
-        onTap: () async {
-          if (isUnread) {
-            try {
-              await _notificationService.markAsRead(notification.notificationId);
-            } catch (_) {}
-          }
-          if (!mounted) return;
-          _openNotification(notification);
-        },
+      child: InkWell(
+        onTap: () => _handleNotificationTap(notification),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isUnread ? const Color(0xFFEEF2FF) : Colors.white,
+            color: isUnread
+                ? const Color(0xFFEEF2FF)
+                : Colors.white,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: isUnread
@@ -279,7 +281,7 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildNotificationIcon(iconData, isUnread),
+              _buildNotificationIcon(icon, isUnread),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -296,8 +298,9 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
                             style: TextStyle(
                               color: const Color(0xFF0F172A),
                               fontSize: 14.5,
-                              fontWeight:
-                              isUnread ? FontWeight.w800 : FontWeight.w600,
+                              fontWeight: isUnread
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
                               height: 1.25,
                             ),
                           ),
@@ -336,17 +339,20 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
                           color: Color(0xFF94A3B8),
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          _formatNotificationTime(notification.createdAt),
-                          style: const TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
+                        Expanded(
+                          child: Text(
+                            _formatNotificationTime(
+                              notification.createdAt,
+                            ),
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                         if (notification.relatedId != null &&
                             notification.relatedId!.isNotEmpty) ...[
-                          const SizedBox(width: 10),
                           Container(
                             width: 3,
                             height: 3,
@@ -357,7 +363,9 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            _getRelatedLabel(notification.relatedType),
+                            _getRelatedLabel(
+                              notification.relatedType,
+                            ),
                             style: const TextStyle(
                               color: Color(0xFF64748B),
                               fontSize: 11,
@@ -377,23 +385,125 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
     );
   }
 
+  Future<void> _handleNotificationTap(
+      OwnerNotificationModel notification,
+      ) async {
+    if (_openingNotification) return;
+
+    _openingNotification = true;
+
+    try {
+      if (!notification.isRead) {
+        try {
+          await _notificationService.markAsRead(
+            notification.notificationId,
+          );
+        } catch (e) {
+          debugPrint('Mark notification as read error: $e');
+        }
+      }
+
+      if (!mounted) return;
+
+      final type = notification.type.toLowerCase();
+      final relatedType = notification.relatedType?.toLowerCase();
+
+      final isBookingNotification =
+          relatedType == 'booking' ||
+              type == 'booking_cancelled' ||
+              type == 'booking' ||
+              type == 'rental';
+
+      if (isBookingNotification) {
+        final String? bookingId =
+        (notification.bookingId != null &&
+            notification.bookingId!.trim().isNotEmpty)
+            ? notification.bookingId!.trim()
+            : (relatedType == 'booking' &&
+            notification.relatedId != null &&
+            notification.relatedId!.trim().isNotEmpty)
+            ? notification.relatedId!.trim()
+            : null;
+
+        if (bookingId == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Booking ID is missing in this notification.',
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        final booking = await _bookingService.getBookingById(bookingId);
+
+        if (!mounted) return;
+
+        if (booking == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Booking details could not be found.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OwnerBookingDetailsScreen(
+              booking: booking,
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      // Payment and other notifications keep their existing details sheet.
+      _openNotification(notification);
+    } catch (e, stackTrace) {
+      debugPrint('Open notification error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to open notification. Please try again.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      _openingNotification = false;
+    }
+  }
+
   Widget _buildNotificationIcon(IconData icon, bool isUnread) {
     return Container(
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: isUnread ? const Color(0xFFE0E7FF) : const Color(0xFFF1F5F9),
+        color: isUnread
+            ? const Color(0xFFE0E7FF)
+            : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Icon(
         icon,
         size: 22,
-        color: isUnread ? const Color(0xFF4F46E5) : const Color(0xFF64748B),
+        color: isUnread
+            ? const Color(0xFF4F46E5)
+            : const Color(0xFF64748B),
       ),
     );
   }
 
-  // ─── Empty / Error ───────────────────────────────────────────────
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -428,7 +538,6 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
                 color: Color(0xFF0F172A),
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
               ),
             ),
             const SizedBox(height: 8),
@@ -454,18 +563,10 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 76,
-              height: 76,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE2E2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.error_outline_rounded,
-                size: 36,
-                color: Color(0xFFDC2626),
-              ),
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: Color(0xFFDC2626),
             ),
             const SizedBox(height: 18),
             const Text(
@@ -489,19 +590,7 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () => setState(() {}),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4F46E5),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Try Again',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
+              child: const Text('Try Again'),
             ),
           ],
         ),
@@ -509,7 +598,6 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
     );
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────
   IconData _getNotificationIcon(String type) {
     switch (type.toLowerCase()) {
       case 'payment':
@@ -518,6 +606,8 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
       case 'booking':
       case 'rental':
         return Icons.home_work_rounded;
+      case 'booking_cancelled':
+        return Icons.event_busy_rounded;
       case 'subscription':
       case 'subscription_approved':
         return Icons.workspace_premium_rounded;
@@ -553,10 +643,18 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
-    if (difference.isNegative || difference.inSeconds < 60) return 'Just now';
-    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
-    if (difference.inHours < 24) return '${difference.inHours}h ago';
-    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    if (difference.isNegative || difference.inSeconds < 60) {
+      return 'Just now';
+    }
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    }
+    if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    }
+    if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    }
 
     return '${dateTime.day.toString().padLeft(2, '0')}/'
         '${dateTime.month.toString().padLeft(2, '0')}/'
@@ -566,20 +664,24 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
   Future<bool> _showDeleteConfirmation() async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
         title: const Text(
           'Delete notification?',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
-        content: const Text('This notification will be permanently removed.'),
+        content: const Text(
+          'This notification will be permanently removed.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text(
               'Delete',
               style: TextStyle(
@@ -591,11 +693,13 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
         ],
       ),
     );
+
     return result ?? false;
   }
 
   void _openNotification(OwnerNotificationModel notification) {
     if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -612,91 +716,9 @@ class _OwnerNotificationsScreenState extends State<OwnerNotificationsScreen>
 }
 
 // ============================================================================
-// DETAILS BOTTOM SHEET
+// NOTIFICATION DETAILS SHEET
+// Payment notification details are loaded from Firestore.
 // ============================================================================
-
-class PaymentNotificationDetails {
-  final double bookingAmount;
-  final String bookingCurrency;
-  final String paymentMethod;
-  final String status;
-  final String paymentId;
-  final String bookingId;
-  final String houseId;
-  final String renterId;
-  final String ownerId;
-  final String? renterName;
-  final String? propertyName;
-  final String? propertyAddress;
-  final DateTime? paidAt;
-
-  const PaymentNotificationDetails({
-    required this.bookingAmount,
-    required this.bookingCurrency,
-    required this.paymentMethod,
-    required this.status,
-    required this.paymentId,
-    required this.bookingId,
-    required this.houseId,
-    required this.renterId,
-    required this.ownerId,
-    this.renterName,
-    this.propertyName,
-    this.propertyAddress,
-    this.paidAt,
-  });
-
-  factory PaymentNotificationDetails.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc,
-      ) {
-    final data = doc.data() ?? {};
-    return PaymentNotificationDetails(
-      bookingAmount: _toDouble(data['bookingAmount']),
-      bookingCurrency: data['bookingCurrency']?.toString() ?? 'USD',
-      paymentMethod: data['paymentMethod']?.toString() ?? 'Bakong',
-      status: data['status']?.toString() ?? 'Paid',
-      paymentId: data['paymentId']?.toString() ?? doc.id,
-      bookingId: data['bookingId']?.toString() ?? '',
-      houseId: data['houseId']?.toString() ?? '',
-      renterId: data['renterId']?.toString() ?? '',
-      ownerId: data['ownerId']?.toString() ?? '',
-      paidAt: _parseDate(data['paidAt']),
-    );
-  }
-
-  static double _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  static DateTime? _parseDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    return null;
-  }
-
-  PaymentNotificationDetails copyWith({
-    String? renterName,
-    String? propertyName,
-    String? propertyAddress,
-  }) {
-    return PaymentNotificationDetails(
-      bookingAmount: bookingAmount,
-      bookingCurrency: bookingCurrency,
-      paymentMethod: paymentMethod,
-      status: status,
-      paymentId: paymentId,
-      bookingId: bookingId,
-      houseId: houseId,
-      renterId: renterId,
-      ownerId: ownerId,
-      renterName: renterName ?? this.renterName,
-      propertyName: propertyName ?? this.propertyName,
-      propertyAddress: propertyAddress ?? this.propertyAddress,
-      paidAt: paidAt,
-    );
-  }
-}
 
 class _NotificationDetailsSheet extends StatefulWidget {
   final OwnerNotificationModel notification;
@@ -716,120 +738,62 @@ class _NotificationDetailsSheet extends StatefulWidget {
       _NotificationDetailsSheetState();
 }
 
-class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
-    with SingleTickerProviderStateMixin {
+class _NotificationDetailsSheetState
+    extends State<_NotificationDetailsSheet> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
-
-  PaymentNotificationDetails? _paymentDetails;
-  bool _isLoadingPayment = false;
+  Map<String, dynamic>? _paymentData;
+  bool _loadingPayment = false;
   String? _paymentError;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 480),
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-    ));
-    _scaleAnimation = Tween<double>(begin: 0.94, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
-    );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _animationController.forward();
-      _loadPaymentDetails();
-    });
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
+    _loadPaymentDetails();
   }
 
   Future<void> _loadPaymentDetails() async {
     final notification = widget.notification;
     final type = notification.type.toLowerCase();
-    final isPayment = type == 'payment' || type == 'rental_payment';
 
-    if (!isPayment) return;
+    if (type != 'payment' && type != 'rental_payment') return;
 
-    final paymentId = notification.relatedId;
+    final paymentId = notification.paymentId ??
+        notification.relatedId;
+
     if (paymentId == null || paymentId.trim().isEmpty) {
-      setState(() => _paymentError = 'Payment information is unavailable.');
+      setState(() {
+        _paymentError = 'Payment information is unavailable.';
+      });
       return;
     }
 
     setState(() {
-      _isLoadingPayment = true;
+      _loadingPayment = true;
       _paymentError = null;
     });
 
     try {
-      final paymentSnapshot =
-      await _firestore.collection('payments').doc(paymentId).get();
+      final snapshot = await _firestore
+          .collection('payments')
+          .doc(paymentId)
+          .get();
 
-      if (!paymentSnapshot.exists) {
-        throw Exception('Payment information could not be found.');
+      if (!snapshot.exists || snapshot.data() == null) {
+        throw Exception('Payment not found');
       }
-
-      var details = PaymentNotificationDetails.fromFirestore(paymentSnapshot);
-
-      String? renterName;
-      if (details.renterId.isNotEmpty) {
-        final renterSnapshot =
-        await _firestore.collection('users').doc(details.renterId).get();
-        renterName = renterSnapshot.data()?['fullName']?.toString();
-      }
-
-      String? propertyName;
-      String? propertyAddress;
-      if (details.houseId.isNotEmpty) {
-        final propertySnapshot =
-        await _firestore.collection('properties').doc(details.houseId).get();
-        final propertyData = propertySnapshot.data();
-        if (propertyData != null) {
-          propertyName = propertyData['propertyName']?.toString() ??
-              propertyData['name']?.toString() ??
-              propertyData['title']?.toString() ??
-              'Rental Property';
-          propertyAddress = propertyData['address']?.toString() ??
-              propertyData['location']?.toString();
-        }
-      }
-
-      details = details.copyWith(
-        renterName: renterName,
-        propertyName: propertyName,
-        propertyAddress: propertyAddress,
-      );
 
       if (!mounted) return;
+
       setState(() {
-        _paymentDetails = details;
-        _isLoadingPayment = false;
+        _paymentData = snapshot.data();
+        _loadingPayment = false;
       });
     } catch (e) {
       if (!mounted) return;
+
       setState(() {
-        _isLoadingPayment = false;
+        _loadingPayment = false;
         _paymentError = 'Unable to load payment details.';
       });
     }
@@ -840,11 +804,6 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
     final notification = widget.notification;
     final type = notification.type.toLowerCase();
     final isPayment = type == 'payment' || type == 'rental_payment';
-    final isSuccess = type == 'success' ||
-        type == 'payment' ||
-        type == 'rental_payment' ||
-        type == 'subscription_approved';
-    final icon = widget.getNotificationIcon(notification.type);
 
     return DraggableScrollableSheet(
       initialChildSize: isPayment ? 0.82 : 0.68,
@@ -855,11 +814,12 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
         return Container(
           decoration: const BoxDecoration(
             color: Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(28),
+            ),
           ),
           child: Column(
             children: [
-              // Handle
               Padding(
                 padding: const EdgeInsets.only(top: 10, bottom: 4),
                 child: Container(
@@ -872,103 +832,61 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
                 ),
               ),
               Expanded(
-                child: SingleChildScrollView(
+                child: ListView(
                   controller: scrollController,
-                  physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top bar
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Notification Details',
-                              style: TextStyle(
-                                color: Color(0xFF0F172A),
-                                fontSize: 19,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(0xFFE2E8F0),
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.close_rounded,
-                                size: 18,
-                                color: Color(0xFF475569),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Header
-                      FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child: ScaleTransition(
-                            scale: _scaleAnimation,
-                            child: _buildNotificationHeader(
-                              notification,
-                              icon,
-                              isSuccess,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      if (isPayment)
-                        _buildPaymentContent(notification)
-                      else ...[
-                        _buildMessageCard(notification),
-                        _buildRelatedInformation(notification),
-                      ],
-
-                      const SizedBox(height: 14),
-                      _buildDateInformation(notification),
-                      const SizedBox(height: 22),
-
-                      // Done button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF4F46E5),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: const Text(
-                            'Done',
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Notification Details',
                             style: TextStyle(
-                              fontSize: 15,
+                              color: Color(0xFF0F172A),
+                              fontSize: 19,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                      ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildHeader(notification),
+                    const SizedBox(height: 14),
+                    _buildMessage(notification),
+                    if (isPayment) ...[
+                      const SizedBox(height: 12),
+                      _buildPaymentContent(notification),
                     ],
-                  ),
+                    const SizedBox(height: 14),
+                    _buildReceivedDate(notification),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4F46E5),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -978,149 +896,52 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
     );
   }
 
-  // ─── Payment Content ─────────────────────────────────────────────
-  Widget _buildPaymentContent(OwnerNotificationModel notification) {
-    if (_isLoadingPayment) return _buildLoadingPayment();
-    if (_paymentError != null) return _buildPaymentError();
-    final payment = _paymentDetails;
-    if (payment == null) return const SizedBox.shrink();
-
-    return Column(
-      children: [
-        _buildPaymentSuccessCard(payment),
-        const SizedBox(height: 12),
-        _buildAmountCard(payment),
-        const SizedBox(height: 12),
-        _buildPersonCard(payment),
-        const SizedBox(height: 12),
-        _buildPropertyCard(payment),
-        const SizedBox(height: 12),
-        _buildPaymentInformationCard(payment),
-      ],
-    );
-  }
-
-  Widget _buildLoadingPayment() {
+  Widget _buildHeader(OwnerNotificationModel notification) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 42, horizontal: 20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: const Column(
-        children: [
-          SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.8,
-              color: Color(0xFF4F46E5),
-            ),
-          ),
-          SizedBox(height: 14),
-          Text(
-            'Loading payment details...',
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentError() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFECACA)),
-      ),
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFEF2F2),
-              shape: BoxShape.circle,
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF2FF),
+              borderRadius: BorderRadius.circular(15),
             ),
-            child: const Icon(
-              Icons.error_outline_rounded,
-              color: Color(0xFFDC2626),
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Unable to load payment details.',
-              style: TextStyle(
-                color: Color(0xFF475569),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentSuccessCard(PaymentNotificationDetails payment) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFECFDF5), Color(0xFFF0FDFA)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFA7F3D0)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.check_rounded,
-              color: Color(0xFF059669),
+            child: Icon(
+              widget.getNotificationIcon(notification.type),
+              color: const Color(0xFF4F46E5),
               size: 26,
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Payment Received',
-                  style: TextStyle(
-                    color: Color(0xFF065F46),
+                  notification.title,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 3),
+                const SizedBox(height: 5),
                 Text(
-                  'The rental payment has been successfully received.',
-                  style: TextStyle(
-                    color: Color(0xFF047857),
-                    fontSize: 12,
-                    height: 1.35,
+                  notification.type
+                      .replaceAll('_', ' ')
+                      .toUpperCase(),
+                  style: const TextStyle(
+                    color: Color(0xFF4F46E5),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -1131,323 +952,27 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
     );
   }
 
-  Widget _buildAmountCard(PaymentNotificationDetails payment) {
-    final amount = payment.bookingAmount;
-    final currency = payment.bookingCurrency;
-    final symbol = currency.toUpperCase() == 'USD' ? '\$' : currency;
-
+  Widget _buildMessage(OwnerNotificationModel notification) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Payment Amount',
+            'Message',
             style: TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '$symbol${amount.toStringAsFixed(2)}',
-            style: const TextStyle(
               color: Color(0xFF0F172A),
-              fontSize: 30,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.8,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            currency,
-            style: const TextStyle(
-              color: Color(0xFF64748B),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFECFDF5),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              payment.status,
-              style: const TextStyle(
-                color: Color(0xFF047857),
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPersonCard(PaymentNotificationDetails payment) {
-    return _buildInfoCard(
-      icon: Icons.person_outline_rounded,
-      title: 'Renter',
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEEF2FF),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.person_rounded,
-              color: Color(0xFF4F46E5),
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  payment.renterName ?? 'Renter',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'Rental customer',
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPropertyCard(PaymentNotificationDetails payment) {
-    return _buildInfoCard(
-      icon: Icons.home_work_outlined,
-      title: 'Property',
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.home_work_rounded,
-              color: Color(0xFF475569),
-              size: 21,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  payment.propertyName ?? 'Rental Property',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                if (payment.propertyAddress != null &&
-                    payment.propertyAddress!.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    payment.propertyAddress!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 11,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentInformationCard(PaymentNotificationDetails payment) {
-    return _buildInfoCard(
-      icon: Icons.receipt_long_outlined,
-      title: 'Payment Information',
-      child: Column(
-        children: [
-          _buildInfoRow(
-            'Payment Method',
-            payment.paymentMethod.isNotEmpty ? payment.paymentMethod : 'Bakong',
-            Icons.account_balance_rounded,
-          ),
-          _buildInfoRow(
-            'Currency',
-            payment.bookingCurrency,
-            Icons.currency_exchange_rounded,
-          ),
-          if (payment.paidAt != null)
-            _buildInfoRow(
-              'Paid On',
-              _formatFullDate(payment.paidAt!),
-              Icons.schedule_rounded,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoCard({
-    required IconData icon,
-    required String title,
-    required Widget child,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF1F5F9),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 16, color: const Color(0xFF475569)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Color(0xFF0F172A),
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: const Color(0xFF94A3B8)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF64748B),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: Color(0xFF0F172A),
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Non-payment ─────────────────────────────────────────────────
-  Widget _buildMessageCard(OwnerNotificationModel notification) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 17,
-                color: Color(0xFF475569),
-              ),
-              SizedBox(width: 8),
-              Text(
-                'Message',
-                style: TextStyle(
-                  color: Color(0xFF0F172A),
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             notification.body,
             style: const TextStyle(
@@ -1461,14 +986,115 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
     );
   }
 
-  Widget _buildRelatedInformation(OwnerNotificationModel notification) {
-    return const SizedBox.shrink();
+  Widget _buildPaymentContent(
+      OwnerNotificationModel notification,
+      ) {
+    if (_loadingPayment) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(
+            color: Color(0xFF4F46E5),
+          ),
+        ),
+      );
+    }
+
+    if (_paymentError != null) {
+      return _infoCard(
+        'Payment details',
+        _paymentError!,
+      );
+    }
+
+    final data = _paymentData;
+    if (data == null) {
+      return _infoCard(
+        'Payment details',
+        'No payment details available.',
+      );
+    }
+
+    final amountValue = data['bookingAmount'] ??
+        data['amount'] ??
+        notification.amount ??
+        0;
+
+    final amount = amountValue is num
+        ? amountValue.toDouble()
+        : double.tryParse(amountValue.toString()) ?? 0;
+
+    final currency = (data['bookingCurrency'] ??
+        data['currency'] ??
+        notification.currency ??
+        'USD')
+        .toString();
+
+    final method = (data['paymentMethod'] ?? 'Bakong').toString();
+    final status = (data['status'] ?? 'Paid').toString();
+
+    return Column(
+      children: [
+        _infoCard(
+          'Payment Amount',
+          '${currency.toUpperCase() == 'USD' ? '\$' : ''}'
+              '${amount.toStringAsFixed(2)} $currency',
+        ),
+        const SizedBox(height: 10),
+        _infoCard('Payment Method', method),
+        const SizedBox(height: 10),
+        _infoCard('Payment Status', status),
+        if ((data['bookingId'] ?? notification.bookingId) != null) ...[
+          const SizedBox(height: 10),
+          _infoCard(
+            'Booking ID',
+            (data['bookingId'] ?? notification.bookingId).toString(),
+          ),
+        ],
+      ],
+    );
   }
 
-  Widget _buildDateInformation(OwnerNotificationModel notification) {
+  Widget _infoCard(String title, String value) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReceivedDate(
+      OwnerNotificationModel notification,
+      ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(12),
@@ -1493,9 +1119,11 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text(
-                  widget.formatNotificationTime(notification.createdAt),
+                  widget.formatNotificationTime(
+                    notification.createdAt,
+                  ),
                   style: const TextStyle(
                     color: Color(0xFF475569),
                     fontSize: 12,
@@ -1508,137 +1136,5 @@ class _NotificationDetailsSheetState extends State<_NotificationDetailsSheet>
         ],
       ),
     );
-  }
-
-  Widget _buildNotificationHeader(
-      OwnerNotificationModel notification,
-      IconData icon,
-      bool isSuccess,
-      ) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: isSuccess
-                  ? const Color(0xFFECFDF5)
-                  : const Color(0xFFEEF2FF),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              icon,
-              size: 28,
-              color: isSuccess
-                  ? const Color(0xFF059669)
-                  : const Color(0xFF4F46E5),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isSuccess
-                        ? const Color(0xFFECFDF5)
-                        : const Color(0xFFEEF2FF),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _formatType(notification.type),
-                    style: TextStyle(
-                      color: isSuccess
-                          ? const Color(0xFF047857)
-                          : const Color(0xFF4338CA),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  notification.title,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    height: 1.25,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatFullDate(DateTime date) {
-    final hour = date.hour > 12
-        ? date.hour - 12
-        : date.hour == 0
-        ? 12
-        : date.hour;
-    final minute = date.minute.toString().padLeft(2, '0');
-    final period = date.hour >= 12 ? 'PM' : 'AM';
-    return '${date.day.toString().padLeft(2, '0')} '
-        '${_monthName(date.month)} '
-        '${date.year}, '
-        '$hour:$minute $period';
-  }
-
-  String _monthName(int month) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return months[month - 1];
-  }
-
-  String _formatType(String type) {
-    switch (type.toLowerCase()) {
-      case 'payment':
-      case 'rental_payment':
-        return 'PAYMENT';
-      case 'booking':
-      case 'rental':
-        return 'BOOKING';
-      case 'subscription':
-      case 'subscription_approved':
-        return 'SUBSCRIPTION';
-      case 'subscription_rejected':
-        return 'REJECTED';
-      case 'property':
-        return 'PROPERTY';
-      case 'warning':
-        return 'WARNING';
-      case 'success':
-        return 'SUCCESS';
-      default:
-        return 'NOTIFICATION';
-    }
   }
 }

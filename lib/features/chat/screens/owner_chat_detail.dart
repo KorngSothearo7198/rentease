@@ -46,17 +46,30 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
   final ImagePicker _picker = ImagePicker();
 
+  // Listen for unread renter messages.
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+  _incomingMessagesReadSubscription;
+
+// Avoid processing the same message repeatedly.
+  final Set<String> _messagesBeingMarkedRead = {};
+
   // ============================================================
-  // AUDIO
+  // AUDIO RECORDING
   // ============================================================
 
   final AudioRecorder _recorder = AudioRecorder();
 
+  // ============================================================
+  // AUDIO PLAYBACK
+  // ============================================================
+
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  Timer? _amplitudeTimer;
+  StreamSubscription<PlayerState>? _audioStateSubscription;
 
   StreamSubscription<void>? _audioCompleteSubscription;
+
+  Timer? _amplitudeTimer;
 
   // ============================================================
   // USER
@@ -78,6 +91,8 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
   bool isRecording = false;
 
+  bool _isStoppingRecording = false;
+
   String? _recordingPath;
 
   String? currentlyPlayingId;
@@ -94,11 +109,13 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
   static const Color _myBubble = Color(0xFF4F46E5);
 
-  static const Color _otherBubble = Color(0xFFFFFFFF);
+  static const Color _otherBubble = Colors.white;
 
   static const Color _textPrimary = Color(0xFF0F172A);
 
   static const Color _textSecondary = Color(0xFF64748B);
+
+  static const Color _border = Color(0xFFE2E8F0);
 
   // ============================================================
   // INIT
@@ -110,12 +127,63 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
     currentUser = FirebaseAuth.instance.currentUser;
 
+    _setupAudioPlayer();
+
     _loadUserNames();
+    _listenAndMarkIncomingMessagesRead();
+  }
+
+  // ============================================================
+  // AUDIO PLAYER SETUP
+  // ============================================================
+
+  Future<void> _setupAudioPlayer() async {
+    try {
+      await _audioPlayer.setAudioContext(
+        AudioContext(
+          android: AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            audioMode: AndroidAudioMode.normal,
+            contentType: AndroidContentType.speech,
+            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.gain,
+          ),
+        ),
+      );
+
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+
+      debugPrint('[OWNER CHAT] AUDIO PLAYER - initialized');
+    } catch (e, stackTrace) {
+      debugPrint('[OWNER CHAT] AUDIO PLAYER SETUP ERROR=$e');
+
+      debugPrint('[OWNER CHAT] AUDIO PLAYER SETUP STACK=$stackTrace');
+    }
+
+    // ----------------------------------------------------------
+    // PLAYER STATE
+    // ----------------------------------------------------------
+
+    _audioStateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (!mounted) {
+        return;
+      }
+
+      if (state == PlayerState.completed || state == PlayerState.stopped) {
+        setState(() {
+          currentlyPlayingId = null;
+        });
+      }
+    });
+
+    // ----------------------------------------------------------
+    // PLAYER COMPLETE
+    // ----------------------------------------------------------
 
     _audioCompleteSubscription = _audioPlayer.onPlayerComplete.listen((_) {
-      debugPrint('[OWNER CHAT] AUDIO - playback completed');
-
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         currentlyPlayingId = null;
@@ -123,30 +191,24 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
     });
   }
 
-  // ============================================================
-  // DISPOSE
-  // ============================================================
-
   @override
   void dispose() {
-    messageController.dispose();
+    // Stop listening to incoming messages.
+    _incomingMessagesReadSubscription?.cancel();
 
+    messageController.dispose();
     _scrollController.dispose();
 
     _amplitudeTimer?.cancel();
 
     _audioCompleteSubscription?.cancel();
+    _audioStateSubscription?.cancel();
 
     _recorder.dispose();
-
     _audioPlayer.dispose();
 
     super.dispose();
   }
-
-  // ============================================================
-  // LOAD USER NAMES
-  // ============================================================
 
   Future<void> _loadUserNames() async {
     try {
@@ -159,14 +221,18 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
         return;
       }
 
-      final data = convDoc.data()!;
+      final data = convDoc.data();
 
-      final renterId = data["renterId"] ?? "";
+      if (data == null) {
+        return;
+      }
 
-      final ownerId = data["ownerId"] ?? "";
+      final renterId = data["renterId"]?.toString() ?? "";
+
+      final ownerId = data["ownerId"]?.toString() ?? "";
 
       // --------------------------------------------------------
-      // LOAD RENTER
+      // RENTER
       // --------------------------------------------------------
 
       if (renterId.isNotEmpty) {
@@ -175,10 +241,12 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
             .doc(renterId)
             .get();
 
-        if (renterDoc.exists) {
+        if (renterDoc.exists && renterDoc.data() != null) {
           final rData = renterDoc.data()!;
 
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
 
           setState(() {
             renterName = rData["fullName"] ?? rData["name"] ?? "Renter";
@@ -189,7 +257,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       }
 
       // --------------------------------------------------------
-      // LOAD OWNER
+      // OWNER
       // --------------------------------------------------------
 
       if (ownerId.isNotEmpty) {
@@ -198,10 +266,12 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
             .doc(ownerId)
             .get();
 
-        if (ownerDoc.exists) {
+        if (ownerDoc.exists && ownerDoc.data() != null) {
           final oData = ownerDoc.data()!;
 
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
 
           setState(() {
             ownerName = oData["fullName"] ?? oData["name"] ?? "You";
@@ -209,12 +279,82 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
         }
       }
     } catch (e) {
-      debugPrint("Load names error: $e");
+      debugPrint("[OWNER CHAT] Load names error=$e");
     }
   }
 
   // ============================================================
-  // SEND TEXT MESSAGE
+// AUTO MARK INCOMING MESSAGES AS READ
+// ============================================================
+
+  Future<void> _listenAndMarkIncomingMessagesRead() async {
+    try {
+      final user = currentUser;
+
+      if (user == null) return;
+
+      // Verify that the current user is the owner of this conversation.
+      final conversationDoc = await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(widget.conversationId)
+          .get();
+
+      if (!mounted || !conversationDoc.exists) return;
+
+      final conversationData = conversationDoc.data();
+
+      if (conversationData == null) return;
+
+      final ownerId = conversationData['ownerId']?.toString() ?? '';
+      final renterId = conversationData['renterId']?.toString() ?? '';
+
+      // Do not mark messages read if this user is not the owner.
+      if (ownerId != user.uid || renterId.isEmpty) return;
+
+      _incomingMessagesReadSubscription = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(widget.conversationId)
+          .collection('messages')
+          .where('isRead', isEqualTo: false)
+          .snapshots()
+          .listen(
+            (snapshot) {
+          for (final messageDoc in snapshot.docs) {
+            final data = messageDoc.data();
+
+            // Only mark messages sent by the renter as read.
+            if (data['senderId']?.toString() != renterId) continue;
+
+            // Avoid duplicate updates while an update is in progress.
+            if (!_messagesBeingMarkedRead.add(messageDoc.id)) continue;
+
+            messageDoc.reference.update({
+              'isRead': true,
+            }).then((_) {
+              debugPrint(
+                '[OWNER CHAT] Message marked as read: ${messageDoc.id}',
+              );
+            }).catchError((Object error) {
+              debugPrint(
+                '[OWNER CHAT] Mark message as read failed: $error',
+              );
+            }).whenComplete(() {
+              _messagesBeingMarkedRead.remove(messageDoc.id);
+            });
+          }
+        },
+        onError: (Object error) {
+          debugPrint('[OWNER CHAT] Read listener error: $error');
+        },
+      );
+    } catch (e, stackTrace) {
+      debugPrint('[OWNER CHAT] Auto mark as read error: $e');
+      debugPrint('[OWNER CHAT] Auto mark as read stack: $stackTrace');
+    }
+  }
+
+  // ============================================================
+  // SEND TEXT
   // ============================================================
 
   Future<void> sendMessage() async {
@@ -239,6 +379,8 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
         id: "",
         senderId: currentUser!.uid,
         message: text,
+        imageUrl: null,
+        audioUrl: null,
         messageType: "text",
         isRead: false,
         createdAt: Timestamp.now(),
@@ -250,17 +392,17 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       );
 
       _scrollToBottom();
-    } catch (e) {
-      debugPrint("Send message error: $e");
+    } catch (e, stackTrace) {
+      debugPrint("[OWNER CHAT] Send text error=$e");
 
-      if (mounted) {
-        _showSnack("Failed to send message");
-      }
+      debugPrint("[OWNER CHAT] Send text stack=$stackTrace");
+
+      _showSnack("Failed to send message");
     }
   }
 
   // ============================================================
-  // PICK + SEND IMAGE
+  // PICK IMAGE
   // ============================================================
 
   Future<void> _pickAndSendImage() async {
@@ -289,9 +431,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       final url = await cloudinaryService.uploadImage(imageFile);
 
       if (url == null || url.isEmpty) {
-        if (mounted) {
-          _showSnack("Failed to upload image");
-        }
+        _showSnack("Failed to upload image");
 
         return;
       }
@@ -299,24 +439,26 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       final message = MessageModel(
         id: "",
         senderId: currentUser!.uid,
-        message: url,
+        message: "",
+        imageUrl: url,
+        audioUrl: null,
         messageType: "image",
         isRead: false,
         createdAt: Timestamp.now(),
       );
 
-      await chatService.sendImageMessage(
+      await chatService.sendMessage(
         conversationId: widget.conversationId,
         message: message,
       );
 
       _scrollToBottom();
-    } catch (e) {
-      debugPrint("Image send error: $e");
+    } catch (e, stackTrace) {
+      debugPrint("[OWNER CHAT] Image send error=$e");
 
-      if (mounted) {
-        _showSnack("Failed to send image");
-      }
+      debugPrint("[OWNER CHAT] Image send stack=$stackTrace");
+
+      _showSnack("Failed to send image");
     } finally {
       if (mounted) {
         setState(() {
@@ -331,111 +473,66 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
   // ============================================================
 
   Future<void> _startRecording() async {
-    debugPrint('[OWNER CHAT] VOICE 01 - START');
-
-    if (isUploading) {
-      debugPrint('[OWNER CHAT] VOICE 02 - uploading');
+    if (currentUser == null) {
       return;
     }
 
-    if (isRecording) {
-      debugPrint('[OWNER CHAT] VOICE 03 - already recording');
+    if (isUploading || isRecording || _isStoppingRecording) {
       return;
     }
 
     try {
-      // --------------------------------------------------------
-      // REQUEST MICROPHONE PERMISSION
-      // --------------------------------------------------------
+      final permission = await Permission.microphone.request();
 
-      debugPrint('[OWNER CHAT] VOICE 04 - requesting permission');
-
-      final status = await Permission.microphone.request();
-
-      debugPrint('[OWNER CHAT] VOICE 05 - permission=$status');
-
-      debugPrint(
-        '[OWNER CHAT] VOICE 06 - '
-        'granted=${status.isGranted}',
-      );
-
-      debugPrint(
-        '[OWNER CHAT] VOICE 07 - '
-        'denied=${status.isDenied}',
-      );
-
-      debugPrint(
-        '[OWNER CHAT] VOICE 08 - '
-        'permanentlyDenied='
-        '${status.isPermanentlyDenied}',
-      );
-
-      debugPrint(
-        '[OWNER CHAT] VOICE 09 - '
-        'restricted=${status.isRestricted}',
-      );
-
-      if (status.isPermanentlyDenied || status.isRestricted) {
-        if (mounted) {
+      if (!permission.isGranted) {
+        if (permission.isPermanentlyDenied) {
           _showMicrophonePermissionDialog();
-        }
-
-        return;
-      }
-
-      if (!status.isGranted) {
-        if (mounted) {
+        } else {
           _showSnack("Microphone permission is required");
         }
 
         return;
       }
-
-      // --------------------------------------------------------
-      // RECORD PACKAGE PERMISSION
-      // --------------------------------------------------------
 
       final hasPermission = await _recorder.hasPermission();
 
-      debugPrint(
-        '[OWNER CHAT] VOICE 10 - '
-        'recorder permission=$hasPermission',
-      );
-
       if (!hasPermission) {
-        if (mounted) {
-          _showSnack("Microphone permission is required");
-        }
+        _showMicrophonePermissionDialog();
 
         return;
       }
 
-      // --------------------------------------------------------
-      // CREATE WAV FILE
-      // --------------------------------------------------------
+      final isAlreadyRecording = await _recorder.isRecording();
+
+      if (isAlreadyRecording) {
+        return;
+      }
 
       final directory = await getTemporaryDirectory();
 
       final path =
-          "${directory.path}/owner_voice_"
-          "${DateTime.now().millisecondsSinceEpoch}.wav";
-
-      debugPrint('[OWNER CHAT] VOICE 11 - path=$path');
-
-      // --------------------------------------------------------
-      // START RECORDING
-      // --------------------------------------------------------
+          '${directory.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
 
       await _recorder.start(
         const RecordConfig(
-          encoder: AudioEncoder.wav,
+          encoder: AudioEncoder.aacLc,
           sampleRate: 44100,
+          bitRate: 128000,
           numChannels: 1,
+          autoGain: true,
+          echoCancel: true,
+          noiseSuppress: true,
         ),
         path: path,
       );
 
-      debugPrint('[OWNER CHAT] VOICE 12 - recorder started');
+      final recordingStarted = await _recorder.isRecording();
+
+      if (!recordingStarted) {
+        _showSnack("Could not start voice recording");
+
+        return;
+      }
 
       if (!mounted) {
         return;
@@ -446,35 +543,31 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
         _recordingPath = path;
       });
 
-      // --------------------------------------------------------
-      // START AMPLITUDE MONITOR
-      // --------------------------------------------------------
-
       _startAmplitudeMonitor();
-
-      debugPrint(
-        '[OWNER CHAT] VOICE 13 - '
-        'isRecording=true',
-      );
     } catch (e, stackTrace) {
-      debugPrint('[OWNER CHAT] VOICE ERROR=$e');
+      debugPrint('[OWNER CHAT] START RECORDING ERROR=$e');
 
-      debugPrint('[OWNER CHAT] VOICE STACK=$stackTrace');
+      debugPrint('[OWNER CHAT] START RECORDING STACK=$stackTrace');
 
       if (mounted) {
-        _showSnack("Could not start recording");
+        setState(() {
+          isRecording = false;
+          _recordingPath = null;
+        });
       }
+
+      _stopAmplitudeMonitor();
+
+      _showSnack("Failed to start voice recording");
     }
   }
 
   // ============================================================
-  // AMPLITUDE MONITOR
+  // AMPLITUDE
   // ============================================================
 
   void _startAmplitudeMonitor() {
     _amplitudeTimer?.cancel();
-
-    debugPrint('[OWNER CHAT] VOICE AMP - monitor started');
 
     _amplitudeTimer = Timer.periodic(const Duration(milliseconds: 500), (
       _,
@@ -484,29 +577,19 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       }
 
       try {
-        final amplitude = await _recorder.getAmplitude();
-
-        debugPrint(
-          '[OWNER CHAT] VOICE AMPLITUDE - '
-          'current=${amplitude.current} '
-          'max=${amplitude.max}',
-        );
-      } catch (e) {
-        debugPrint('[OWNER CHAT] VOICE AMPLITUDE ERROR=$e');
-      }
+        await _recorder.getAmplitude();
+      } catch (_) {}
     });
   }
 
   // ============================================================
-  // STOP AMPLITUDE MONITOR
+  // STOP AMPLITUDE
   // ============================================================
 
   void _stopAmplitudeMonitor() {
     _amplitudeTimer?.cancel();
 
     _amplitudeTimer = null;
-
-    debugPrint('[OWNER CHAT] VOICE AMP - monitor stopped');
   }
 
   // ============================================================
@@ -518,21 +601,16 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       return;
     }
 
+    if (_isStoppingRecording) {
+      return;
+    }
+
+    _isStoppingRecording = true;
+
     try {
-      // Stop amplitude monitor first.
       _stopAmplitudeMonitor();
 
-      debugPrint(
-        '[OWNER CHAT] VOICE STOP 01 - '
-        'stopping recorder',
-      );
-
       final path = await _recorder.stop();
-
-      debugPrint(
-        '[OWNER CHAT] VOICE STOP 02 - '
-        'path=$path',
-      );
 
       if (mounted) {
         setState(() {
@@ -542,27 +620,16 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       }
 
       if (path == null || path.isEmpty) {
-        debugPrint(
-          '[OWNER CHAT] VOICE STOP 03 - '
-          'empty path',
-        );
+        _showSnack("No voice recording found");
+
         return;
       }
 
       if (currentUser == null) {
         await _deleteLocalFile(path);
+
         return;
       }
-
-      if (mounted) {
-        setState(() {
-          isUploading = true;
-        });
-      }
-
-      // --------------------------------------------------------
-      // CHECK FILE
-      // --------------------------------------------------------
 
       final file = File(path);
 
@@ -572,76 +639,52 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
       final fileSize = await file.length();
 
-      debugPrint(
-        '[OWNER CHAT] VOICE FILE - '
-        'size=$fileSize bytes',
-      );
+      if (fileSize <= 0) {
+        throw Exception("Recording file is empty");
+      }
 
-      final bytes = await file.readAsBytes();
-
-      debugPrint(
-        '[OWNER CHAT] VOICE FILE - '
-        'bytes=${bytes.length}',
-      );
-
-      // --------------------------------------------------------
-      // UPLOAD CLOUDINARY
-      // --------------------------------------------------------
-
-      debugPrint('[OWNER CHAT] VOICE UPLOAD - START');
+      if (mounted) {
+        setState(() {
+          isUploading = true;
+        });
+      }
 
       final url = await cloudinaryService.uploadAudio(file);
 
       if (url == null || url.isEmpty) {
-        if (mounted) {
-          _showSnack("Failed to upload voice");
-        }
-
-        await _deleteLocalFile(path);
+        _showSnack("Failed to upload voice");
 
         return;
       }
 
-      debugPrint(
-        '[OWNER CHAT] VOICE UPLOAD - '
-        'url=$url',
-      );
-
-      // --------------------------------------------------------
-      // CREATE VOICE MESSAGE
-      // --------------------------------------------------------
-
       final message = MessageModel(
         id: "",
         senderId: currentUser!.uid,
-        message: url,
-        messageType: "voice",
+        message: "",
+        imageUrl: null,
+        audioUrl: url,
+        messageType: "audio",
         isRead: false,
         createdAt: Timestamp.now(),
       );
 
-      await chatService.sendMessage(
+      await chatService.sendVoiceMessage(
         conversationId: widget.conversationId,
         message: message,
-      );
-
-      debugPrint(
-        '[OWNER CHAT] VOICE SEND - '
-        'message sent',
       );
 
       _scrollToBottom();
 
       await _deleteLocalFile(path);
     } catch (e, stackTrace) {
-      debugPrint('[OWNER CHAT] VOICE SEND ERROR=$e');
+      debugPrint('[OWNER CHAT] VOICE ERROR=$e');
 
       debugPrint('[OWNER CHAT] VOICE STACK=$stackTrace');
 
-      if (mounted) {
-        _showSnack("Failed to send voice message");
-      }
+      _showSnack("Failed to send voice message");
     } finally {
+      _isStoppingRecording = false;
+
       if (mounted) {
         setState(() {
           isUploading = false;
@@ -655,26 +698,18 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
   // ============================================================
 
   Future<void> _cancelRecording() async {
-    if (!isRecording) {
+    if (!isRecording || _isStoppingRecording) {
       return;
     }
+
+    _isStoppingRecording = true;
 
     try {
       _stopAmplitudeMonitor();
 
       final savedPath = _recordingPath;
 
-      debugPrint(
-        '[OWNER CHAT] RECORD CANCEL - '
-        'savedPath=$savedPath',
-      );
-
       final stoppedPath = await _recorder.stop();
-
-      debugPrint(
-        '[OWNER CHAT] RECORD CANCEL - '
-        'stoppedPath=$stoppedPath',
-      );
 
       if (mounted) {
         setState(() {
@@ -688,12 +723,8 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       if (localPath != null && localPath.isNotEmpty) {
         await _deleteLocalFile(localPath);
       }
-
-      debugPrint('[OWNER CHAT] RECORD CANCEL - completed');
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('[OWNER CHAT] RECORD CANCEL ERROR=$e');
-
-      debugPrint('[OWNER CHAT] RECORD CANCEL STACK=$stackTrace');
 
       if (mounted) {
         setState(() {
@@ -701,11 +732,13 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
           _recordingPath = null;
         });
       }
+    } finally {
+      _isStoppingRecording = false;
     }
   }
 
   // ============================================================
-  // DELETE LOCAL AUDIO
+  // DELETE LOCAL FILE
   // ============================================================
 
   Future<void> _deleteLocalFile(String path) async {
@@ -714,11 +747,9 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
       if (await file.exists()) {
         await file.delete();
-
-        debugPrint('[OWNER CHAT] Local audio deleted');
       }
     } catch (e) {
-      debugPrint('[OWNER CHAT] Delete local audio error=$e');
+      debugPrint('[OWNER CHAT] Delete local file error=$e');
     }
   }
 
@@ -728,29 +759,33 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
   Future<void> _playVoice(String url, String messageId) async {
     try {
-      debugPrint(
-        '[OWNER CHAT] AUDIO - '
-        'messageId=$messageId',
-      );
+      if (url.isEmpty) {
+        _showSnack("Audio URL is missing");
 
-      debugPrint('[OWNER CHAT] AUDIO - url=$url');
+        return;
+      }
 
-      // Stop current audio if tapping same message.
+      // --------------------------------------------------------
+      // STOP CURRENT AUDIO
+      // --------------------------------------------------------
+
       if (currentlyPlayingId == messageId) {
         await _audioPlayer.stop();
 
-        if (!mounted) return;
-
-        setState(() {
-          currentlyPlayingId = null;
-        });
+        if (mounted) {
+          setState(() {
+            currentlyPlayingId = null;
+          });
+        }
 
         return;
       }
 
       await _audioPlayer.stop();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         currentlyPlayingId = messageId;
@@ -762,11 +797,11 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
       debugPrint('[OWNER CHAT] AUDIO STACK=$stackTrace');
 
-      if (!mounted) return;
-
-      setState(() {
-        currentlyPlayingId = null;
-      });
+      if (mounted) {
+        setState(() {
+          currentlyPlayingId = null;
+        });
+      }
 
       _showSnack("Unable to play voice message");
     }
@@ -830,9 +865,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
     } catch (e) {
       debugPrint("Delete message error: $e");
 
-      if (mounted) {
-        _showSnack("Failed to delete message");
-      }
+      _showSnack("Failed to delete message");
     }
   }
 
@@ -892,9 +925,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
                 } catch (e) {
                   debugPrint("Edit message error: $e");
 
-                  if (mounted) {
-                    _showSnack("Failed to edit message");
-                  }
+                  _showSnack("Failed to edit message");
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -937,7 +968,6 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 12),
-
               Container(
                 width: 40,
                 height: 4,
@@ -946,10 +976,8 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-
               const SizedBox(height: 8),
 
-              // Edit only text.
               if (msg.messageType == "text")
                 ListTile(
                   leading: const Icon(Icons.edit_rounded, color: _primary),
@@ -1060,7 +1088,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
   }
 
   // ============================================================
-  // MICROPHONE PERMISSION DIALOG
+  // MICROPHONE DIALOG
   // ============================================================
 
   void _showMicrophonePermissionDialog() {
@@ -1077,9 +1105,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
           ),
           title: const Text("Microphone Permission"),
           content: const Text(
-            "Microphone access is disabled. "
-            "Please enable microphone permission "
-            "in Settings to send voice messages.",
+            "Microphone access is disabled. Please enable microphone permission in Settings to record voice messages.",
           ),
           actions: [
             TextButton(
@@ -1107,7 +1133,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
   }
 
   // ============================================================
-  // SNACKBAR
+  // SNACK
   // ============================================================
 
   void _showSnack(String message) {
@@ -1136,54 +1162,132 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       // ========================================================
       appBar: AppBar(
         backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        scrolledUnderElevation: 0.5,
+        scrolledUnderElevation: 0,
+
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () {
             Navigator.pop(context);
           },
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            size: 20,
+            color: _textPrimary,
+          ),
         ),
+
+        titleSpacing: 0,
+
         title: Row(
           children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: _primary.withOpacity(0.1),
-              backgroundImage: renterImage != null && renterImage!.isNotEmpty
-                  ? NetworkImage(renterImage!)
-                  : null,
-              child: renterImage == null || renterImage!.isEmpty
-                  ? const Icon(Icons.person, color: _primary, size: 22)
-                  : null,
+            // --------------------------------------------------
+            // RENTER AVATAR
+            // --------------------------------------------------
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _primary.withOpacity(0.10),
+              ),
+              child: ClipOval(
+                child: renterImage != null && renterImage!.isNotEmpty
+                    ? Image.network(
+                        renterImage!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.person_rounded,
+                            color: _primary,
+                          );
+                        },
+                      )
+                    : const Icon(
+                        Icons.person_rounded,
+                        color: _primary,
+                        size: 23,
+                      ),
+              ),
             ),
 
-            const SizedBox(width: 12),
+            const SizedBox(width: 11),
 
+            // --------------------------------------------------
+            // NAME + PROPERTY
+            // --------------------------------------------------
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     renterName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: _textPrimary,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  Text(
-                    widget.propertyName,
-                    style: const TextStyle(fontSize: 12, color: _textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+
+                  const SizedBox(height: 2),
+
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.home_work_outlined,
+                        size: 12,
+                        color: _primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          widget.propertyName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: _textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ],
         ),
+
+        actions: [
+          // ----------------------------------------------------
+          // MORE
+          // ----------------------------------------------------
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded, color: _textPrimary),
+            onSelected: (value) {
+              if (value == "clear") {
+                _showSnack("Conversation management");
+              }
+            },
+            itemBuilder: (context) {
+              return const [
+                PopupMenuItem(
+                  value: "clear",
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20),
+                      SizedBox(width: 10),
+                      Text("Conversation Info"),
+                    ],
+                  ),
+                ),
+              ];
+            },
+          ),
+        ],
       ),
 
       // ========================================================
@@ -1198,6 +1302,10 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
             child: StreamBuilder<List<MessageModel>>(
               stream: chatService.getMessages(widget.conversationId),
               builder: (context, snapshot) {
+                // ----------------------------------------------
+                // LOADING
+                // ----------------------------------------------
+
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
                   return const Center(
@@ -1205,20 +1313,35 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
                   );
                 }
 
+                // ----------------------------------------------
+                // ERROR
+                // ----------------------------------------------
+
                 if (snapshot.hasError) {
                   return Center(
-                    child: Text(
-                      "Failed to load messages",
-                      style: const TextStyle(color: _textSecondary),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          size: 42,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          "Failed to load messages",
+                          style: TextStyle(color: _textSecondary),
+                        ),
+                      ],
                     ),
                   );
                 }
 
                 final messages = snapshot.data ?? [];
 
-                // ------------------------------------------------
-                // Scroll when a new message arrives.
-                // ------------------------------------------------
+                // ----------------------------------------------
+                // AUTO SCROLL
+                // ----------------------------------------------
 
                 if (messages.length > _lastMessageCount) {
                   _lastMessageCount = messages.length;
@@ -1238,27 +1361,26 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
                   });
                 }
 
+                // ----------------------------------------------
+                // EMPTY
+                // ----------------------------------------------
+
                 if (messages.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      "No messages yet",
-                      style: TextStyle(color: _textSecondary),
-                    ),
-                  );
+                  return _buildEmptyChat();
                 }
+
+                // ----------------------------------------------
+                // MESSAGE LIST
+                // ----------------------------------------------
 
                 return ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
 
                     final isMe = msg.senderId == currentUser?.uid;
-
-                    // ------------------------------------------------
-                    // DATE SEPARATOR
-                    // ------------------------------------------------
 
                     bool showDate = false;
 
@@ -1277,21 +1399,15 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
                     return Column(
                       children: [
+                        // ----------------------------------------
+                        // DATE
+                        // ----------------------------------------
                         if (showDate)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              DateFormat(
-                                'EEE, dd MMM yyyy',
-                              ).format(msg.createdAt.toDate()),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: _textSecondary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
+                          _buildDateSeparator(msg.createdAt.toDate()),
 
+                        // ----------------------------------------
+                        // MESSAGE
+                        // ----------------------------------------
                         _buildMessageBubble(msg, isMe),
                       ],
                     );
@@ -1302,7 +1418,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
           ),
 
           // ----------------------------------------------------
-          // UPLOADING
+          // UPLOAD PROGRESS
           // ----------------------------------------------------
           if (isUploading)
             const LinearProgressIndicator(
@@ -1312,7 +1428,7 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
             ),
 
           // ----------------------------------------------------
-          // RECORDING UI
+          // RECORDING
           // ----------------------------------------------------
           if (isRecording) _buildRecordingArea(),
 
@@ -1326,102 +1442,243 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
   }
 
   // ============================================================
+  // EMPTY CHAT
+  // ============================================================
+
+  Widget _buildEmptyChat() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: _primary.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 34,
+                color: _primary,
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            Text(
+              "Start a conversation",
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: _textPrimary,
+              ),
+            ),
+
+            const SizedBox(height: 6),
+
+            Text(
+              "Send a message to $renterName about ${widget.propertyName}.",
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: _textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // DATE SEPARATOR
+  // ============================================================
+
+  Widget _buildDateSeparator(DateTime date) {
+    String text;
+
+    final now = DateTime.now();
+
+    final today = DateTime(now.year, now.month, now.day);
+
+    final messageDate = DateTime(date.year, date.month, date.day);
+
+    final difference = today.difference(messageDate).inDays;
+
+    if (difference == 0) {
+      text = "Today";
+    } else if (difference == 1) {
+      text = "Yesterday";
+    } else {
+      text = DateFormat("EEE, dd MMM yyyy").format(date);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          Expanded(child: Container(height: 1, color: _border)),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _border),
+              ),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: _textSecondary,
+                ),
+              ),
+            ),
+          ),
+
+          Expanded(child: Container(height: 1, color: _border)),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
   // INPUT AREA
   // ============================================================
 
   Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // ------------------------------------------------------
-          // GALLERY
-          // ------------------------------------------------------
-          IconButton(
-            onPressed: isUploading ? null : _pickAndSendImage,
-            icon: const Icon(Icons.photo_library_rounded),
-            color: _primary,
-          ),
-
-          // ------------------------------------------------------
-          // MICROPHONE
-          // ------------------------------------------------------
-          GestureDetector(
-            onLongPressStart: (_) {
-              _startRecording();
-            },
-            onLongPressEnd: (_) {
-              _stopAndSendRecording();
-            },
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              child: Icon(
-                Icons.mic_none_rounded,
-                color: isUploading ? Colors.grey : _primary,
-              ),
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: const Border(top: BorderSide(color: _border)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, -3),
             ),
-          ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // --------------------------------------------------
+            // IMAGE
+            // --------------------------------------------------
+            _inputButton(
+              icon: Icons.add_photo_alternate_outlined,
+              onTap: isUploading ? null : _pickAndSendImage,
+            ),
 
-          // ------------------------------------------------------
-          // TEXT FIELD
-          // ------------------------------------------------------
-          Expanded(
-            child: TextField(
-              controller: messageController,
-              textCapitalization: TextCapitalization.sentences,
-              enabled: !isUploading,
-              decoration: InputDecoration(
-                hintText: "Type a message...",
-                hintStyle: const TextStyle(color: _textSecondary),
-                filled: true,
-                fillColor: _bg,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(28),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              onSubmitted: (_) {
-                sendMessage();
+            // --------------------------------------------------
+            // VOICE
+            // --------------------------------------------------
+            GestureDetector(
+              onLongPressStart: (_) {
+                _startRecording();
               },
-            ),
-          ),
-
-          const SizedBox(width: 8),
-
-          // ------------------------------------------------------
-          // SEND
-          // ------------------------------------------------------
-          GestureDetector(
-            onTap: isUploading ? null : sendMessage,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isUploading ? Colors.grey : _primary,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 22,
+              onLongPressEnd: (_) {
+                _stopAndSendRecording();
+              },
+              child: Container(
+                width: 42,
+                height: 42,
+                margin: const EdgeInsets.only(right: 6),
+                decoration: BoxDecoration(color: _bg, shape: BoxShape.circle),
+                child: Icon(
+                  Icons.mic_none_rounded,
+                  size: 21,
+                  color: isUploading ? _textSecondary : _primary,
+                ),
               ),
             ),
-          ),
-        ],
+
+            // --------------------------------------------------
+            // TEXT
+            // --------------------------------------------------
+            Expanded(
+              child: Container(
+                constraints: const BoxConstraints(
+                  minHeight: 42,
+                  maxHeight: 120,
+                ),
+                decoration: BoxDecoration(
+                  color: _bg,
+                  borderRadius: BorderRadius.circular(23),
+                  border: Border.all(color: _border),
+                ),
+                child: TextField(
+                  controller: messageController,
+                  enabled: !isUploading,
+                  textCapitalization: TextCapitalization.sentences,
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    hintText: "Type a message...",
+                    hintStyle: TextStyle(color: _textSecondary, fontSize: 14),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    border: InputBorder.none,
+                  ),
+                  onSubmitted: (_) {
+                    sendMessage();
+                  },
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 7),
+
+            // --------------------------------------------------
+            // SEND
+            // --------------------------------------------------
+            GestureDetector(
+              onTap: isUploading ? null : sendMessage,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isUploading ? Colors.grey : _primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.arrow_upward_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // INPUT BUTTON
+  // ============================================================
+
+  Widget _inputButton({required IconData icon, required VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        margin: const EdgeInsets.only(right: 5),
+        decoration: BoxDecoration(color: _bg, shape: BoxShape.circle),
+        child: Icon(
+          icon,
+          size: 21,
+          color: onTap == null ? _textSecondary : _primary,
+        ),
       ),
     );
   }
@@ -1431,70 +1688,105 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
   // ============================================================
 
   Widget _buildRecordingArea() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
-      color: Colors.white,
-      child: Row(
-        children: [
-          // ------------------------------------------------------
-          // CANCEL
-          // ------------------------------------------------------
-          IconButton(
-            onPressed: _cancelRecording,
-            icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-          ),
-
-          // ------------------------------------------------------
-          // RECORDING STATUS
-          // ------------------------------------------------------
-          Expanded(
-            child: Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: _bg,
-                borderRadius: BorderRadius.circular(28),
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: const Border(top: BorderSide(color: _border)),
+        ),
+        child: Row(
+          children: [
+            // --------------------------------------------------
+            // CANCEL
+            // --------------------------------------------------
+            GestureDetector(
+              onTap: _cancelRecording,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.red,
+                ),
               ),
-              child: const Row(
-                children: [
-                  Icon(Icons.mic_rounded, color: Colors.red),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Recording voice...",
-                      style: TextStyle(
+            ),
+
+            const SizedBox(width: 8),
+
+            // --------------------------------------------------
+            // RECORDING
+            // --------------------------------------------------
+            Expanded(
+              child: Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(23),
+                  border: Border.all(color: Colors.red.withOpacity(0.15)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: const BoxDecoration(
                         color: Colors.red,
-                        fontWeight: FontWeight.w600,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                  ),
-                  Text(
-                    "Release to send",
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
+
+                    const SizedBox(width: 9),
+
+                    const Expanded(
+                      child: Text(
+                        "Recording voice...",
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
+                    const Text(
+                      "Release to send",
+                      style: TextStyle(color: _textSecondary, fontSize: 10),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
 
-          // ------------------------------------------------------
-          // SEND
-          // ------------------------------------------------------
-          GestureDetector(
-            onTap: _stopAndSendRecording,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: const BoxDecoration(
-                color: _primary,
-                shape: BoxShape.circle,
+            // --------------------------------------------------
+            // SEND
+            // --------------------------------------------------
+            GestureDetector(
+              onTap: _stopAndSendRecording,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  color: _primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.send_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
-              child: const Icon(Icons.send_rounded, color: Colors.white),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1504,11 +1796,11 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
   // ============================================================
 
   Widget _buildMessageBubble(MessageModel msg, bool isMe) {
-    final time = DateFormat('HH:mm').format(msg.createdAt.toDate());
+    final time = DateFormat("HH:mm").format(msg.createdAt.toDate());
 
     final isImage = msg.messageType == "image";
 
-    final isVoice = msg.messageType == "voice";
+    final isVoice = msg.messageType == "audio" || msg.messageType == "voice";
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1517,18 +1809,15 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
           _showMessageOptions(msg);
         },
         child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
+            maxWidth: MediaQuery.of(context).size.width * 0.76,
           ),
+          margin: const EdgeInsets.only(bottom: 7),
           child: Column(
             crossAxisAlignment: isMe
                 ? CrossAxisAlignment.end
                 : CrossAxisAlignment.start,
             children: [
-              // --------------------------------------------------
-              // MESSAGE CONTENT
-              // --------------------------------------------------
               Container(
                 padding: isImage
                     ? const EdgeInsets.all(4)
@@ -1536,15 +1825,16 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
                 decoration: BoxDecoration(
                   color: isMe ? _myBubble : _otherBubble,
                   borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(isMe ? 18 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 18),
+                    topLeft: const Radius.circular(19),
+                    topRight: const Radius.circular(19),
+                    bottomLeft: Radius.circular(isMe ? 19 : 5),
+                    bottomRight: Radius.circular(isMe ? 5 : 19),
                   ),
+                  border: !isMe ? Border.all(color: _border) : null,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 6,
+                      color: Colors.black.withOpacity(0.035),
+                      blurRadius: 5,
                       offset: const Offset(0, 2),
                     ),
                   ],
@@ -1554,15 +1844,15 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
 
               const SizedBox(height: 3),
 
-              // --------------------------------------------------
+              // ------------------------------------------------
               // TIME
-              // --------------------------------------------------
+              // ------------------------------------------------
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     time,
-                    style: const TextStyle(fontSize: 11, color: _textSecondary),
+                    style: const TextStyle(fontSize: 10, color: _textSecondary),
                   ),
 
                   if (msg.isEdited)
@@ -1571,10 +1861,22 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
                       child: Text(
                         "edited",
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 9,
                           color: _textSecondary,
                           fontStyle: FontStyle.italic,
                         ),
+                      ),
+                    ),
+
+                  if (isMe)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Icon(
+                        msg.isRead
+                            ? Icons.done_all_rounded
+                            : Icons.done_rounded,
+                        size: 13,
+                        color: msg.isRead ? _primary : _textSecondary,
                       ),
                     ),
                 ],
@@ -1596,16 +1898,31 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
     bool isImage,
     bool isVoice,
   ) {
+    // ==========================================================
+    // IMAGE
+    // ==========================================================
 
     if (isImage) {
+      final imageUrl = msg.imageUrl != null && msg.imageUrl!.isNotEmpty
+          ? msg.imageUrl!
+          : msg.message;
+
+      if (imageUrl.isEmpty) {
+        return const SizedBox(
+          width: 220,
+          height: 120,
+          child: Icon(Icons.broken_image_outlined, color: Colors.grey),
+        );
+      }
+
       return GestureDetector(
         onTap: () {
-          _previewImage(msg.message);
+          _previewImage(imageUrl);
         },
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(15),
           child: Image.network(
-            msg.message,
+            imageUrl,
             width: 220,
             fit: BoxFit.cover,
             loadingBuilder: (context, child, progress) {
@@ -1636,28 +1953,116 @@ class _OwnerChatDetailState extends State<OwnerChatDetail> {
       );
     }
 
+    // ==========================================================
+    // AUDIO
+    // ==========================================================
+
     if (isVoice) {
+      String audioUrl = "";
+
+      if (msg.messageType == "audio") {
+        audioUrl = msg.audioUrl ?? "";
+      } else {
+        audioUrl = msg.message;
+      }
+
+      if (audioUrl.isEmpty) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              color: isMe ? Colors.white : Colors.red,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              "Audio unavailable",
+              style: TextStyle(color: isMe ? Colors.white : _textPrimary),
+            ),
+          ],
+        );
+      }
+
       final isPlaying = currentlyPlayingId == msg.id;
 
       return GestureDetector(
         onTap: () {
-          _playVoice(msg.message, msg.id);
+          _playVoice(audioUrl, msg.id);
         },
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-              color: isMe ? Colors.white : _primary,
-              size: 36,
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: isMe
+                    ? Colors.white.withOpacity(0.15)
+                    : _primary.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                color: isMe ? Colors.white : _primary,
+                size: 23,
+              ),
             ),
 
             const SizedBox(width: 10),
 
+            // -----------------------------------------------
+            // VOICE WAVE
+            // -----------------------------------------------
+            SizedBox(
+              width: 90,
+              height: 25,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: List.generate(18, (index) {
+                  final heights = [
+                    7.0,
+                    13.0,
+                    9.0,
+                    17.0,
+                    11.0,
+                    20.0,
+                    14.0,
+                    8.0,
+                    18.0,
+                    12.0,
+                    21.0,
+                    10.0,
+                    16.0,
+                    8.0,
+                    14.0,
+                    19.0,
+                    10.0,
+                    7.0,
+                  ];
+
+                  return Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 1.2),
+                      height: heights[index],
+                      decoration: BoxDecoration(
+                        color: isMe
+                            ? Colors.white.withOpacity(0.75)
+                            : _primary.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
             Text(
-              isPlaying ? "Playing..." : "Voice message",
+              isPlaying ? "..." : "Voice",
               style: TextStyle(
                 color: isMe ? Colors.white : _textPrimary,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
             ),

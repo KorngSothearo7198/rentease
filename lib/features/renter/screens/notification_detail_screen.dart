@@ -4,6 +4,7 @@ import 'package:rentease/features/renter/screens/payment_screen.dart';
 
 import '../../../models/booking_model.dart';
 import '../../../models/notification_model.dart';
+import '../../../models/property_model.dart';
 import '../../../models/user_model.dart';
 import '../../owner/screens/owner_public_profile_screen.dart';
 
@@ -26,9 +27,6 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   UserModel? owner;
   bool isLoading = true;
 
-  // ============================================================
-  // COLORS
-  // ============================================================
 
   static const Color _primary = Color(0xFF4F46E5);
 
@@ -74,9 +72,9 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     return _isDark(context) ? _darkBorder : _lightBorder;
   }
 
-  // ============================================================
-  // INIT
-  // ============================================================
+  Property? property;
+
+  // UserModel? owner;
 
   @override
   void initState() {
@@ -88,71 +86,248 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   // OWNER PROFILE BOTTOM SHEET
   // ============================================================
 
+
   void _openOwnerProfileSheet() {
     if (owner == null) return;
 
-    final dark = _isDark(context);
+    final ownerData = owner!;
+    final image = ownerData.profileImage?.trim() ?? '';
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withOpacity(0.6),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.92,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: dark ? _darkCard : Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(28),
-                ),
-              ),
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: _card(context),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(22),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Header
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Owner Information',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: _textPrimary(context),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: _textSecondary(context),
+                        ),
+                      ),
+                    ],
+                  ),
+
                   const SizedBox(height: 12),
 
-                  // Handle
+                  // Profile image
+                  CircleAvatar(
+                    radius: 43,
+                    backgroundColor: _primary.withOpacity(0.12),
+                    backgroundImage:
+                    image.isNotEmpty ? NetworkImage(image) : null,
+                    child: image.isEmpty
+                        ? const Icon(
+                      Icons.person_rounded,
+                      size: 42,
+                      color: _primary,
+                    )
+                        : null,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Name
+                  Text(
+                    ownerData.fullName.trim().isEmpty
+                        ? 'Unknown Owner'
+                        : ownerData.fullName,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                      color: _textPrimary(context),
+                    ),
+                  ),
+
+                  const SizedBox(height: 5),
+
                   Container(
-                    width: 42,
-                    height: 4,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
-                      color: dark ? Colors.grey.shade700 : Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(10),
+                      color: _primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // Close
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(
-                        Icons.close_rounded,
-                        color: _textPrimary(context),
+                    child: const Text(
+                      'Property Owner',
+                      style: TextStyle(
+                        color: _primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
 
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(20),
+                  const SizedBox(height: 22),
+
+                  // Contact information
+                  _ownerInfoRow(
+                    icon: Icons.phone_outlined,
+                    title: 'Phone',
+                    value: ownerData.phone,
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  _ownerInfoRow(
+                    icon: Icons.email_outlined,
+                    title: 'Email',
+                    value: ownerData.email,
+                  ),
+
+                  // Additional information
+                  if (ownerData.occupation.trim().isNotEmpty) ...[
+                    const SizedBox(height: 15),
+                    _ownerInfoRow(
+                      icon: Icons.work_outline_rounded,
+                      title: 'Occupation',
+                      value: ownerData.occupation,
+                    ),
+                  ],
+
+                  if (ownerData.address.trim().isNotEmpty) ...[
+                    const SizedBox(height: 15),
+                    _ownerInfoRow(
+                      icon: Icons.location_on_outlined,
+                      title: 'Address',
+                      value: ownerData.address,
+                    ),
+                  ],
+
+                  if (ownerData.age > 0) ...[
+                    const SizedBox(height: 15),
+                    _ownerInfoRow(
+                      icon: Icons.cake_outlined,
+                      title: 'Age',
+                      value: '${ownerData.age} years old',
+                    ),
+                  ],
+
+                  if (ownerData.gender.trim().isNotEmpty) ...[
+                    const SizedBox(height: 15),
+                    _ownerInfoRow(
+                      icon: Icons.person_outline_rounded,
+                      title: 'Gender',
+                      value: ownerData.gender,
+                    ),
+                  ],
+
+                  if (ownerData.bio.trim().isNotEmpty) ...[
+                    const SizedBox(height: 15),
+                    _ownerInfoRow(
+                      icon: Icons.info_outline_rounded,
+                      title: 'About',
+                      value: ownerData.bio,
+                    ),
+                  ],
+
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      child: OwnerPublicProfileScreen(owner: owner!),
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
-            );
-          },
+            ),
+          ),
         );
       },
+    );
+  }
+
+
+  Widget _ownerInfoRow({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: _primary.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            color: _primary,
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _textSecondary(context),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _textPrimary(context),
+                ),
+                softWrap: true,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -345,10 +520,6 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
       child: child,
     );
   }
-
-  // ============================================================
-  // 1. NOTIFICATION CARD
-  // ============================================================
 
   Widget _buildNotificationCard() {
     final isApproved =

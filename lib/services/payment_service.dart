@@ -1,762 +1,10 @@
-// import 'dart:convert';
-// import 'dart:developer';
-//
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:crypto/crypto.dart';
-//
-// import '../models/payment_model.dart';
-// import '../services/bakong_service.dart';
-// import 'owner_notification_service.dart';
-//
-// class PaymentService {
-//   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-//
-//   final OwnerNotificationService _ownerNotificationService =
-//       OwnerNotificationService();
-//
-//   // ============================================================
-//   // BAKONG CONFIGURATION
-//   // ============================================================
-//
-//   static const String bakongAccount = 'ly_minhchou@bkrt';
-//
-//   // ============================================================
-//   // TEST PAYMENT CONFIGURATION
-//   // ============================================================
-//   //
-//   // REAL BOOKING:
-//   //
-//   // Example:
-//   //     1.48 USD
-//   //
-//   // TEST PAYMENT:
-//   //
-//   //     100 KHR
-//   //
-//   // During testing, these values are intentionally different.
-//   //
-//   // ============================================================
-//
-//   static const double testPaymentAmount = 100.0;
-//
-//   static const String testPaymentCurrency = 'KHR';
-//
-//   // ============================================================
-//   // GENERATE MD5 FROM KHQR
-//   // ============================================================
-//
-//   String generateKhqrMd5(String khqr) {
-//     if (khqr.trim().isEmpty) {
-//       throw Exception('KHQR string is empty.');
-//     }
-//
-//     return md5.convert(utf8.encode(khqr)).toString();
-//   }
-//
-//   // ============================================================
-//   // VERIFY BAKONG PAYMENT
-//   // ============================================================
-//
-//   Future<Map<String, dynamic>> verifyBakongPayment({
-//     required String md5,
-//     required double expectedAmount,
-//     required String expectedCurrency,
-//   }) async {
-//     try {
-//       log('');
-//       log('==============================================');
-//       log('VERIFYING BAKONG PAYMENT');
-//       log('==============================================');
-//
-//       log('Expected Amount: $expectedAmount');
-//       log('Expected Currency: $expectedCurrency');
-//       log('MD5: $md5');
-//
-//       // ==========================================================
-//       // CHECK BAKONG
-//       // ==========================================================
-//
-//       final result = await BakongService.checkTransactionByMd5(md5);
-//
-//       log('Bakong paid: ${result.paid}');
-//
-//       log('Bakong message: ${result.responseMessage}');
-//
-//       // ==========================================================
-//       // PAYMENT NOT FOUND
-//       // ==========================================================
-//
-//       // ==========================================================
-//       // BAKONG RATE LIMIT
-//       // ==========================================================
-//
-//       if (result.rateLimited) {
-//         return {
-//           'success': false,
-//           'paid': false,
-//           'rateLimited': true,
-//           'message':
-//               'Bakong daily request limit has been exceeded. '
-//               'Please try again tomorrow.',
-//           'data': result.data,
-//         };
-//       }
-//
-//       // ==========================================================
-//       // UNAUTHORIZED
-//       // ==========================================================
-//
-//       if (result.unauthorized) {
-//         return {
-//           'success': false,
-//           'paid': false,
-//           'unauthorized': true,
-//           'message':
-//               'Bakong authentication failed. '
-//               'Please check the Bakong API token.',
-//           'data': result.data,
-//         };
-//       }
-//
-//       // ==========================================================
-//       // PAYMENT NOT FOUND YET
-//       // ==========================================================
-//
-//       if (!result.paid) {
-//         return {
-//           'success': false,
-//           'paid': false,
-//           'message':
-//               result.responseMessage ?? 'Payment has not been found yet.',
-//           'data': result.data,
-//         };
-//       }
-//
-//       // ==========================================================
-//       // TRANSACTION DATA
-//       // ==========================================================
-//
-//       final data = result.data;
-//
-//       if (data == null) {
-//         return {
-//           'success': false,
-//           'paid': false,
-//           'message': 'Bakong returned no transaction data.',
-//         };
-//       }
-//
-//       // ==========================================================
-//       // AMOUNT
-//       // ==========================================================
-//
-//       final transactionAmount = _parseDouble(data['amount']);
-//
-//       // ==========================================================
-//       // CURRENCY
-//       // ==========================================================
-//
-//       final currency = data['currency']?.toString().trim().toUpperCase() ?? '';
-//
-//       log('');
-//       log('==============================================');
-//       log('BAKONG TRANSACTION DATA');
-//       log('==============================================');
-//
-//       log('Amount: $transactionAmount');
-//
-//       log('Currency: $currency');
-//
-//       // ==========================================================
-//       // VERIFY CURRENCY
-//       // ==========================================================
-//
-//       if (currency != expectedCurrency.trim().toUpperCase()) {
-//         return {
-//           'success': false,
-//           'paid': false,
-//           'message':
-//               'Payment currency does not match. '
-//               'Expected $expectedCurrency '
-//               'but received $currency.',
-//           'data': data,
-//         };
-//       }
-//
-//       // ==========================================================
-//       // VERIFY AMOUNT
-//       // ==========================================================
-//
-//       if ((transactionAmount - expectedAmount).abs() > 0.001) {
-//         return {
-//           'success': false,
-//           'paid': false,
-//           'message':
-//               'Payment amount does not match. '
-//               'Expected '
-//               '$expectedAmount $expectedCurrency, '
-//               'but Bakong returned '
-//               '$transactionAmount $currency.',
-//           'data': data,
-//         };
-//       }
-//
-//       log('');
-//       log('==============================================');
-//       log('AMOUNT VERIFIED');
-//       log('==============================================');
-//
-//       log('$transactionAmount $currency');
-//
-//       // ==========================================================
-//       // VERIFY RECEIVER
-//       // ==========================================================
-//
-//       final receiver = data['toAccountId']?.toString().trim() ?? '';
-//
-//       log('Receiver: $receiver');
-//
-//       if (receiver.isNotEmpty &&
-//           receiver.toLowerCase() != bakongAccount.toLowerCase()) {
-//         return {
-//           'success': false,
-//           'paid': false,
-//           'message':
-//               'Payment receiver does not match. '
-//               'Expected $bakongAccount '
-//               'but received $receiver.',
-//           'data': data,
-//         };
-//       }
-//
-//       log('');
-//       log('==============================================');
-//       log('BAKONG PAYMENT VERIFIED');
-//       log('==============================================');
-//
-//       return {
-//         'success': true,
-//         'paid': true,
-//         'message': result.responseMessage ?? 'Payment verified successfully.',
-//         'data': data,
-//       };
-//     } catch (e, stackTrace) {
-//       log('BAKONG VERIFY ERROR', error: e, stackTrace: stackTrace);
-//
-//       rethrow;
-//     }
-//   }
-//
-//   // ============================================================
-//   // COMPLETE PAYMENT
-//   // ============================================================
-//
-//   Future<Map<String, dynamic>> completePayment({
-//     required String bookingId,
-//     required String paymentMethod,
-//     required String khqrMd5,
-//   }) async {
-//     try {
-//       log('');
-//       log('==============================================');
-//       log('COMPLETE PAYMENT - TEST MODE');
-//       log('==============================================');
-//
-//       // ==========================================================
-//       // TEST PAYMENT
-//       // ==========================================================
-//
-//       const double paymentAmount = testPaymentAmount;
-//
-//       const String paymentCurrency = testPaymentCurrency;
-//
-//       log(
-//         'TEST PAYMENT: '
-//         '$paymentAmount $paymentCurrency',
-//       );
-//
-//       // ==========================================================
-//       // GET BOOKING
-//       // ==========================================================
-//
-//       final bookingRef = _firestore.collection('bookings').doc(bookingId);
-//
-//       final bookingDoc = await bookingRef.get();
-//
-//       if (!bookingDoc.exists) {
-//         throw Exception('Booking not found: $bookingId');
-//       }
-//
-//       final bookingData = bookingDoc.data() as Map<String, dynamic>;
-//
-//       // ==========================================================
-//       // BOOKING INFORMATION
-//       // ==========================================================
-//
-//       final renterId = bookingData['renterId']?.toString() ?? '';
-//
-//       final ownerId = bookingData['ownerId']?.toString() ?? '';
-//
-//       final houseId = bookingData['houseId']?.toString() ?? '';
-//
-//       // ==========================================================
-//       // REAL BOOKING AMOUNT
-//       // ==========================================================
-//       //
-//       // Example:
-//       //
-//       //     1.48 USD
-//       //
-//       // This is stored separately.
-//       //
-//       // It is NOT used to verify the 100 KHR
-//       // test payment.
-//       //
-//       // ==========================================================
-//
-//       final bookingAmount = _parseDouble(bookingData['totalAmount']);
-//
-//       // ==========================================================
-//       // VALIDATION
-//       // ==========================================================
-//
-//       if (renterId.isEmpty) {
-//         throw Exception('Booking does not contain renterId.');
-//       }
-//
-//       if (ownerId.isEmpty) {
-//         throw Exception('Booking does not contain ownerId.');
-//       }
-//
-//       if (houseId.isEmpty) {
-//         throw Exception('Booking does not contain houseId.');
-//       }
-//
-//       if (bookingAmount <= 0) {
-//         throw Exception('Invalid booking amount: $bookingAmount');
-//       }
-//
-//       // ==========================================================
-//       // CHECK BOOKING PAYMENT STATUS
-//       // ==========================================================
-//
-//       final paymentStatus = bookingData['paymentStatus']
-//           ?.toString()
-//           .toLowerCase();
-//
-//       if (paymentStatus == 'paid') {
-//         throw Exception('This booking has already been paid.');
-//       }
-//
-//       log('');
-//       log(
-//         'REAL BOOKING AMOUNT: '
-//         '$bookingAmount USD',
-//       );
-//
-//       log(
-//         'TEST PAYMENT: '
-//         '$paymentAmount $paymentCurrency',
-//       );
-//
-//       // ==========================================================
-//       // VERIFY BAKONG
-//       // ==========================================================
-//
-//       final verification = await verifyBakongPayment(
-//         md5: khqrMd5,
-//
-//         // Test amount = 100 KHR
-//         expectedAmount: paymentAmount,
-//
-//         // Test currency = KHR
-//         expectedCurrency: paymentCurrency,
-//       );
-//
-//       // ==========================================================
-//       // CHECK VERIFICATION
-//       // ==========================================================
-//
-//       if (verification['success'] != true) {
-//         throw Exception(
-//           verification['message'] ?? 'Bakong payment has not been verified.',
-//         );
-//       }
-//
-//       // ==========================================================
-//       // TRANSACTION DATA
-//       // ==========================================================
-//
-//       final transactionData = verification['data'] as Map<String, dynamic>?;
-//
-//       if (transactionData == null) {
-//         throw Exception('Bakong transaction data is missing.');
-//       }
-//
-//       // ==========================================================
-//       // TRANSACTION INFORMATION
-//       // ==========================================================
-//
-//       final transactionHash = transactionData['hash']?.toString();
-//
-//       final fromAccount = transactionData['fromAccountId']?.toString();
-//
-//       final toAccount = transactionData['toAccountId']?.toString();
-//
-//       final currency =
-//           transactionData['currency']?.toString().trim().toUpperCase() ??
-//           paymentCurrency;
-//
-//       final transactionAmount = _parseDouble(transactionData['amount']);
-//
-//       log('');
-//       log('==============================================');
-//       log('BAKONG TRANSACTION');
-//       log('==============================================');
-//
-//       log('Amount: $transactionAmount');
-//
-//       log('Currency: $currency');
-//
-//       log('Hash: $transactionHash');
-//
-//       log('From: $fromAccount');
-//
-//       log('To: $toAccount');
-//
-//       // ==========================================================
-//       // FINAL CURRENCY CHECK
-//       // ==========================================================
-//
-//       if (currency != paymentCurrency) {
-//         throw Exception(
-//           'Payment currency does not match. '
-//           'Expected $paymentCurrency, '
-//           'but Bakong returned $currency.',
-//         );
-//       }
-//
-//       // ==========================================================
-//       // FINAL AMOUNT CHECK
-//       // ==========================================================
-//
-//       if ((transactionAmount - paymentAmount).abs() > 0.001) {
-//         throw Exception(
-//           'Payment amount does not match. '
-//           'Expected '
-//           '$paymentAmount $paymentCurrency, '
-//           'but Bakong returned '
-//           '$transactionAmount $currency.',
-//         );
-//       }
-//
-//       // ==========================================================
-//       // VERIFY RECEIVER
-//       // ==========================================================
-//
-//       if (toAccount != null &&
-//           toAccount.isNotEmpty &&
-//           toAccount.toLowerCase() != bakongAccount.toLowerCase()) {
-//         throw Exception(
-//           'Payment receiver does not match. '
-//           'Expected $bakongAccount, '
-//           'but received $toAccount.',
-//         );
-//       }
-//
-//       log('');
-//       log('==============================================');
-//       log('TEST PAYMENT VERIFIED');
-//       log('==============================================');
-//
-//       // ==========================================================
-//       // PREVENT DUPLICATE TRANSACTION
-//       // ==========================================================
-//
-//       if (transactionHash != null && transactionHash.isNotEmpty) {
-//         final duplicate = await _firestore
-//             .collection('payments')
-//             .where('bakongTransactionHash', isEqualTo: transactionHash)
-//             .limit(1)
-//             .get();
-//
-//         if (duplicate.docs.isNotEmpty) {
-//           throw Exception('This Bakong transaction has already been recorded.');
-//         }
-//       }
-//
-//       // ==========================================================
-//       // CREATE PAYMENT
-//       // ==========================================================
-//
-//       final paymentRef = _firestore.collection('payments').doc();
-//
-//       final paymentId = paymentRef.id;
-//
-//       final paymentData = {
-//         // --------------------------------------------------------
-//         // PAYMENT
-//         // --------------------------------------------------------
-//         'paymentId': paymentId,
-//
-//         'bookingId': bookingId,
-//
-//         'renterId': renterId,
-//
-//         'ownerId': ownerId,
-//
-//         'houseId': houseId,
-//
-//         // --------------------------------------------------------
-//         // REAL BOOKING
-//         // --------------------------------------------------------
-//         'bookingAmount': bookingAmount,
-//
-//         'bookingCurrency': 'USD',
-//
-//         // --------------------------------------------------------
-//         // ACTUAL TEST PAYMENT
-//         // --------------------------------------------------------
-//         'amount': transactionAmount,
-//
-//         'expectedAmount': paymentAmount,
-//
-//         'currency': currency,
-//
-//         // --------------------------------------------------------
-//         // PAYMENT METHOD
-//         // --------------------------------------------------------
-//         'paymentMethod': paymentMethod,
-//
-//         // --------------------------------------------------------
-//         // BAKONG
-//         // --------------------------------------------------------
-//         'bakongAccount': bakongAccount,
-//
-//         'bakongMd5': khqrMd5,
-//
-//         'bakongTransactionHash': transactionHash,
-//
-//         'fromAccountId': fromAccount,
-//
-//         'toAccountId': toAccount,
-//
-//         // --------------------------------------------------------
-//         // STATUS
-//         // --------------------------------------------------------
-//         'status': 'Paid',
-//
-//         // --------------------------------------------------------
-//         // TEST MODE
-//         // --------------------------------------------------------
-//         'testPayment': true,
-//
-//         // --------------------------------------------------------
-//         // TIMESTAMP
-//         // --------------------------------------------------------
-//         'createdAt': FieldValue.serverTimestamp(),
-//
-//         'paidAt': FieldValue.serverTimestamp(),
-//       };
-//
-//       // ==========================================================
-//       // FIRESTORE BATCH
-//       // ==========================================================
-//
-//       final batch = _firestore.batch();
-//
-//       // Save payment
-//       batch.set(paymentRef, paymentData);
-//
-//       // Update booking
-//       batch.update(bookingRef, {
-//         'paymentId': paymentId,
-//
-//         'paymentMethod': paymentMethod,
-//
-//         'paymentStatus': 'Paid',
-//
-//         // Real booking amount
-//         'bookingAmount': bookingAmount,
-//
-//         'bookingCurrency': 'USD',
-//
-//         // Test payment
-//         'paidAmount': transactionAmount,
-//
-//         'paidCurrency': currency,
-//
-//         'testPayment': true,
-//
-//         'updatedAt': FieldValue.serverTimestamp(),
-//
-//         'paidAt': FieldValue.serverTimestamp(),
-//       });
-//
-//       // ==========================================================
-//       // COMMIT
-//       // ==========================================================
-//
-//       await batch.commit();
-//
-//       log('');
-//       log('==============================================');
-//       log('PAYMENT SAVED TO FIRESTORE');
-//       log('==============================================');
-//
-//       log('Payment ID: $paymentId');
-//
-//       log('Booking ID: $bookingId');
-//
-//       log(
-//         'Real Booking: '
-//         '$bookingAmount USD',
-//       );
-//
-//       log(
-//         'Test Paid: '
-//         '$transactionAmount $currency',
-//       );
-//
-//       // owner Notifaction
-//       try {
-//         await _ownerNotificationService.createNotification(
-//           userId: ownerId,
-//           role: 'owner',
-//
-//           title: 'Payment Received',
-//
-//           body:
-//               'Test payment of '
-//               '${transactionAmount.toStringAsFixed(0)} $currency '
-//               'has been received for booking $bookingId.',
-//
-//           type: 'rental_payment',
-//
-//           relatedId: paymentId,
-//           relatedType: 'payment',
-//
-//           bookingId: bookingId,
-//           houseId: houseId,
-//           paymentId: paymentId,
-//
-//           amount: transactionAmount,
-//           currency: currency,
-//         );
-//
-//         log('');
-//         log('==============================================');
-//         log('OWNER PAYMENT NOTIFICATION CREATED');
-//         log('==============================================');
-//
-//         log('Owner ID: $ownerId');
-//
-//         log('Payment ID: $paymentId');
-//
-//         log('Booking ID: $bookingId');
-//
-//         log('Amount: $transactionAmount $currency');
-//       } catch (notificationError, notificationStackTrace) {
-//         // ----------------------------------------------------------
-//         // DO NOT FAIL PAYMENT IF NOTIFICATION FAILS
-//         // ----------------------------------------------------------
-//
-//         log(
-//           'OWNER NOTIFICATION ERROR',
-//           error: notificationError,
-//           stackTrace: notificationStackTrace,
-//         );
-//       }
-//
-//       // ==========================================================
-//       // RETURN
-//       // ==========================================================
-//
-//       return {
-//         'success': true,
-//
-//         'paymentId': paymentId,
-//
-//         'transactionHash': transactionHash,
-//
-//         'amount': transactionAmount,
-//
-//         'currency': currency,
-//
-//         'bookingAmount': bookingAmount,
-//
-//         'bookingCurrency': 'USD',
-//
-//         'testPayment': true,
-//
-//         'data': transactionData,
-//       };
-//     } catch (e, stackTrace) {
-//       log('COMPLETE PAYMENT ERROR', error: e, stackTrace: stackTrace);
-//
-//       rethrow;
-//     }
-//   }
-//
-//   // ============================================================
-//   // RENTER PAYMENTS
-//   // ============================================================
-//
-//   Stream<List<PaymentModel>> getRenterPayments(String renterId) {
-//     return _firestore
-//         .collection('payments')
-//         .where('renterId', isEqualTo: renterId)
-//         .orderBy('createdAt', descending: true)
-//         .snapshots()
-//         .map(
-//           (snapshot) => snapshot.docs
-//               .map((doc) => PaymentModel.fromMap(doc.id, doc.data()))
-//               .toList(),
-//         );
-//   }
-//
-//   // ============================================================
-//   // GET PAYMENT BY ID
-//   // ============================================================
-//
-//   Future<PaymentModel?> getPaymentById(String paymentId) async {
-//     try {
-//       final doc = await _firestore.collection('payments').doc(paymentId).get();
-//
-//       if (!doc.exists) {
-//         return null;
-//       }
-//
-//       return PaymentModel.fromMap(doc.id, doc.data()!);
-//     } catch (e) {
-//       log('GET PAYMENT ERROR: $e');
-//
-//       return null;
-//     }
-//   }
-//
-//   // ============================================================
-//   // PARSE DOUBLE
-//   // ============================================================
-//
-//   double _parseDouble(dynamic value) {
-//     if (value == null) {
-//       return 0.0;
-//     }
-//
-//     if (value is num) {
-//       return value.toDouble();
-//     }
-//
-//     return double.tryParse(value.toString()) ?? 0.0;
-//   }
-// }
 
 import 'dart:convert';
 import 'dart:developer';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../models/payment_model.dart';
 import '../services/bakong_service.dart';
@@ -960,11 +208,6 @@ class PaymentService {
           'data': data,
         };
       }
-
-      // ==========================================================
-      // CURRENCY
-      // ==========================================================
-
       final currency = data['currency']?.toString().trim().toUpperCase() ?? '';
 
       if (currency.isEmpty) {
@@ -975,10 +218,6 @@ class PaymentService {
           'data': data,
         };
       }
-
-      // ==========================================================
-      // RECEIVER
-      // ==========================================================
 
       final receiver = data['toAccountId']?.toString().trim() ?? '';
 
@@ -991,15 +230,7 @@ class PaymentService {
         };
       }
 
-      // ==========================================================
-      // SENDER
-      // ==========================================================
-
       final sender = data['fromAccountId']?.toString().trim() ?? '';
-
-      // ==========================================================
-      // LOG TRANSACTION
-      // ==========================================================
 
       log('');
       log('==============================================');
@@ -1010,10 +241,6 @@ class PaymentService {
       log('Currency: $currency');
       log('From: $sender');
       log('To: $receiver');
-
-      // ==========================================================
-      // VERIFY CURRENCY
-      // ==========================================================
 
       if (currency != expectedCurrencyValue) {
         return {
@@ -1026,10 +253,6 @@ class PaymentService {
           'data': data,
         };
       }
-
-      // ==========================================================
-      // VERIFY AMOUNT
-      // ==========================================================
 
       if ((transactionAmount - expectedAmount).abs() > 0.001) {
         return {
@@ -1045,10 +268,6 @@ class PaymentService {
         };
       }
 
-      // ==========================================================
-      // VERIFY RECEIVER
-      // ==========================================================
-
       if (receiver.toLowerCase() != bakongAccount.toLowerCase()) {
         return {
           'success': false,
@@ -1060,10 +279,6 @@ class PaymentService {
           'data': data,
         };
       }
-
-      // ==========================================================
-      // VERIFIED
-      // ==========================================================
 
       log('');
       log('==============================================');
@@ -1143,15 +358,7 @@ class PaymentService {
         '$testPaymentAmount $testPaymentCurrency',
       );
 
-      // ==========================================================
-      // BOOKING REFERENCE
-      // ==========================================================
-
       final bookingRef = _firestore.collection('bookings').doc(cleanBookingId);
-
-      // ==========================================================
-      // GET BOOKING
-      // ==========================================================
 
       final bookingDoc = await bookingRef.get();
 
@@ -1161,10 +368,6 @@ class PaymentService {
 
       final bookingData = bookingDoc.data() as Map<String, dynamic>;
 
-      // ==========================================================
-      // BOOKING INFORMATION
-      // ==========================================================
-
       final renterId = bookingData['renterId']?.toString().trim() ?? '';
 
       final ownerId = bookingData['ownerId']?.toString().trim() ?? '';
@@ -1173,12 +376,7 @@ class PaymentService {
 
       final bookingAmount = _parseDouble(bookingData['totalAmount']);
 
-      final currentPaymentStatus =
-          bookingData['paymentStatus']?.toString().trim().toLowerCase() ?? '';
-
-      // ==========================================================
-      // VALIDATE BOOKING
-      // ==========================================================
+      final currentPaymentStatus = bookingData['paymentStatus']?.toString().trim().toLowerCase() ?? '';
 
       if (renterId.isEmpty) {
         throw Exception('Booking does not contain renterId.');
@@ -1195,10 +393,6 @@ class PaymentService {
       if (bookingAmount <= 0) {
         throw Exception('Invalid booking amount: $bookingAmount');
       }
-
-      // ==========================================================
-      // ALREADY PAID
-      // ==========================================================
 
       if (currentPaymentStatus == 'paid') {
         throw Exception('This booking has already been paid.');
@@ -1464,20 +658,15 @@ class PaymentService {
           userId: ownerId,
           role: 'owner',
           title: 'Payment Received',
-          body:
-              'Test payment of '
-              '${transactionAmount.toStringAsFixed(0)} '
-              '$currency '
-              'has been received for booking '
-              '$cleanBookingId.',
+          body: 'Payment has been received successfully.',
           type: 'rental_payment',
           relatedId: paymentId,
           relatedType: 'payment',
           bookingId: cleanBookingId,
           houseId: houseId,
           paymentId: paymentId,
-          amount: transactionAmount,
-          currency: currency,
+          amount: bookingAmount,
+          currency: 'USD',
         );
 
         log('OWNER PAYMENT NOTIFICATION CREATED');
@@ -1573,4 +762,45 @@ class PaymentService {
 
     return double.tryParse(value.toString()) ?? 0.0;
   }
+
+
+
+  Future<Map<String, dynamic>?> getPaymentByBookingId(
+      String bookingId,
+      ) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('payments')
+          .where('bookingId', isEqualTo: bookingId)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        debugPrint(
+          '[PAYMENT] No payment found for booking: $bookingId',
+        );
+        return null;
+      }
+
+      final data = snapshot.docs.first.data();
+
+      debugPrint(
+        '[PAYMENT] bookingAmount = ${data['bookingAmount']}',
+      );
+
+      debugPrint(
+        '[PAYMENT] bookingCurrency = ${data['bookingCurrency']}',
+      );
+
+      return data;
+    } catch (e) {
+      debugPrint(
+        '[PAYMENT] Get payment error: $e',
+      );
+
+      return null;
+    }
+  }
+
+
 }
